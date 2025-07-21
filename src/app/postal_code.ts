@@ -15,6 +15,8 @@ export interface PdokAddress {
   huisletter?: string;
   huis_nlt: string;
   rdf_seealso: string;
+  centroide_ll: string;
+  centroide_rd: string;
 }
 
 export interface FormattedAddress {
@@ -31,6 +33,14 @@ export interface PostalCodeInfo {
   straatnamen: string[];
   adressen: FormattedAddress[];
   postalCode: string;
+}
+
+export interface ValidationResult {
+  streetName: boolean | null;
+  houseNumber: boolean | null;
+  validHouseNumbers: string[];
+  addressValidityMessage: string;
+  selectedCoordinates: [number, number] | null;
 }
 
 export function formatHuisnummer(
@@ -105,6 +115,63 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
     postalCode: postcode,
   };
 }
+
+export function validateAddress(
+  postalCodeInfo: PostalCodeInfo | null,
+  streetName: string,
+  houseNumber: string,
+  postalCode: string
+): ValidationResult {
+  if (!postalCodeInfo) {
+    return {
+      streetName: null,
+      houseNumber: null,
+      validHouseNumbers: [],
+      addressValidityMessage: "",
+      selectedCoordinates: null,
+    };
+  }
+
+  const { straatnamen, adressen } = postalCodeInfo;
+
+  const isStreetNameValid = streetName ? straatnamen.includes(streetName) : null;
+
+  let validAddresses: FormattedAddress[] = [];
+  if (isStreetNameValid) {
+    validAddresses = adressen.filter((v) => v.straatnaam === streetName);
+  }
+
+  const houseNumbers = validAddresses.map((v) => v.nummer);
+
+  const isHouseNumberValid = houseNumber ? houseNumbers.includes(houseNumber) : null;
+
+  let addressValidityMessage = "";
+  let selectedCoordinates: [number, number] | null = null;
+
+  if (isStreetNameValid && isHouseNumberValid) {
+    addressValidityMessage = "Valid address!";
+    const selectedAddress = validAddresses.find((v) => v.nummer === houseNumber);
+    if (selectedAddress) {
+      const match = selectedAddress.details.centroide_ll.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+      if (match) {
+        selectedCoordinates = [parseFloat(match[2]), parseFloat(match[1])];
+      }
+    }
+  } else if (!streetName || !houseNumber || !postalCode) {
+    addressValidityMessage = "Please fill in all address fields";
+  } else {
+    addressValidityMessage = "Invalid address!";
+  }
+
+  return {
+    streetName: isStreetNameValid,
+    houseNumber: isHouseNumberValid,
+    validHouseNumbers: houseNumbers,
+    addressValidityMessage,
+    selectedCoordinates,
+  };
+}
+
 
 let addressLookup: PostalCodeInfo | null = null;
 

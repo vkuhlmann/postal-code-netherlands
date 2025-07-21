@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { getForPostalCode, PostalCodeInfo, FormattedAddress } from './postal_code';
+import { getForPostalCode, PostalCodeInfo, validateAddress, ValidationResult } from './postal_code';
 
 export default function Home() {
   const [postalCode, setPostalCode] = useState('');
@@ -10,12 +10,7 @@ export default function Home() {
   const [houseNumber, setHouseNumber] = useState('');
 
   const [postalCodeInfo, setPostalCodeInfo] = useState<PostalCodeInfo | null>(null);
-  const [validHouseNumbers, setValidHouseNumbers] = useState<string[]>([]);
-  const [addressValidityMessage, setAddressValidityMessage] = useState('');
-  const [validationStatus, setValidationStatus] = useState({
-    streetName: null as boolean | null,
-    houseNumber: null as boolean | null,
-  });
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
   useEffect(() => {
     const checkPostalCode = async () => {
@@ -42,36 +37,8 @@ export default function Home() {
   }, [postalCode]);
 
   useEffect(() => {
-    if (!postalCodeInfo) {
-      setValidHouseNumbers([]);
-      setValidationStatus({ streetName: null, houseNumber: null });
-      setAddressValidityMessage('');
-      return;
-    }
-
-    const { straatnamen, adressen } = postalCodeInfo;
-
-    const isStreetNameValid = streetName ? straatnamen.includes(streetName) : null;
-    setValidationStatus((prev) => ({ ...prev, streetName: isStreetNameValid }));
-
-    let validAddresses: FormattedAddress[] = [];
-    if (isStreetNameValid) {
-      validAddresses = adressen.filter((v) => v.straatnaam === streetName);
-    }
-
-    const houseNumbers = validAddresses.map((v) => v.nummer);
-    setValidHouseNumbers(houseNumbers);
-
-    const isHouseNumberValid = houseNumber ? houseNumbers.includes(houseNumber) : null;
-    setValidationStatus((prev) => ({ ...prev, houseNumber: isHouseNumberValid }));
-
-    if (isStreetNameValid && isHouseNumberValid) {
-      setAddressValidityMessage('Valid address!');
-    } else if (!streetName || !houseNumber || !postalCode) {
-      setAddressValidityMessage('Please fill in all address fields');
-    } else {
-      setAddressValidityMessage('Invalid address!');
-    }
+    const result = validateAddress(postalCodeInfo, streetName, houseNumber, postalCode);
+    setValidationResult(result);
   }, [streetName, houseNumber, postalCodeInfo, postalCode]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -126,7 +93,7 @@ export default function Home() {
             </label>
             <input
               className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${getBorderColor(
-                validationStatus.streetName
+                validationResult?.streetName ?? null
               )}`}
               id="streetName"
               type="text"
@@ -144,7 +111,7 @@ export default function Home() {
             </label>
             <input
               className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${getBorderColor(
-                validationStatus.houseNumber
+                validationResult?.houseNumber ?? null
               )}`}
               id="houseNumber"
               type="text"
@@ -154,20 +121,21 @@ export default function Home() {
             />
           </div>
 
-          {validHouseNumbers.length > 0 && (
+          {validationResult?.validHouseNumbers && validationResult.validHouseNumbers.length > 0 && (
             <div className="mb-4 text-sm text-gray-600">
-              Geldige huisnummers: {validHouseNumbers.join(', ')}
+              Geldige huisnummers: {validationResult.validHouseNumbers.join(', ')}
             </div>
           )}
 
-          {addressValidityMessage && (
+          {validationResult?.addressValidityMessage && (
             <div
-              className={`mb-4 text-sm ${addressValidityMessage === 'Valid address!'
+              className={`mb-4 text-sm ${ 
+                validationResult.addressValidityMessage === 'Valid address!'
                   ? 'text-green-500'
                   : 'text-red-500'
-                }`}
+              }`}
             >
-              {addressValidityMessage}
+              {validationResult.addressValidityMessage}
             </div>
           )}
 
@@ -182,7 +150,7 @@ export default function Home() {
         </form>
       </div>
       <div className="w-full max-w-md mt-8">
-        <Map />
+        <Map coordinates={validationResult?.selectedCoordinates ?? null} />
       </div>
     </main>
   );
