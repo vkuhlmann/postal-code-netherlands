@@ -97,7 +97,7 @@ const CACHE_EXPIRATION_TIME = 14 * 24 * 60 * 60 * 1000; // 2 weeks in millisecon
 
 export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo> {
   postcode = postcode.replaceAll(" ", "");
-  let docs: PdokAddress[] = [];
+  const docs: PdokAddress[] = [];
   const cache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
 
   if (postcode.length == 6) {
@@ -108,7 +108,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
       // Check if request exists in cache.
       let fetchResponse = await cache?.match(request);
       if (fetchResponse) {
-        let fetchDate = new Date(fetchResponse.headers.get('date') ?? 0);
+        const fetchDate = new Date(fetchResponse.headers.get('date') ?? 0);
         console.log(`Expiry date ${fetchDate} for ${request}`);
 
         if (fetchDate.getTime() < Date.now() - CACHE_EXPIRATION_TIME) {
@@ -130,7 +130,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
           throw new Error(`Response status: ${fetchResponse.status}`);
         }
 
-        let headers = new Headers(fetchResponse.headers);
+        const headers = new Headers(fetchResponse.headers);
         headers.set("date", new Date().toISOString());
 
         // We need to clone the fetchResponse, because its body gets consumed.
@@ -147,7 +147,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
       }
 
       const data: PdokResponse = await fetchResponse.json();
-      let newDocs = data.response.docs;
+      const newDocs = data.response.docs;
       docs.push(...newDocs);
       start += newDocs.length;
       if (newDocs.length < 100) {
@@ -161,7 +161,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
   const plaatsnamen = [...new Set(postcode_infos.map((v) => v.woonplaatsnaam))].sort();
   const straatnamen = [...new Set(postcode_infos.map((v) => v.straatnaam))].sort();
 
-  let adressen: FormattedAddress[] = docs
+  const adressen: FormattedAddress[] = docs
     .filter((v) => v.type === "adres")
     .map((v) => {
       return {
