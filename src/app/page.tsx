@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { getForPostalCode, PostalCodeInfo, validateAddress, ValidationResult } from './postal_code';
+import { getPostalCodeInfo, PostalCodeInfo, validateAddress, ValidationResult, FormattedAddress } from './postal_code';
 
 export default function Home() {
   const [postalCode, setPostalCode] = useState('');
@@ -11,13 +11,14 @@ export default function Home() {
 
   const [postalCodeInfo, setPostalCodeInfo] = useState<PostalCodeInfo | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [locations, setLocations] = useState<FormattedAddress[]>([]);
 
   useEffect(() => {
     const checkPostalCode = async () => {
       const sanitizedPostalCode = postalCode.replace(/\s/g, '');
       if (sanitizedPostalCode.length === 6) {
         try {
-          const info = await getForPostalCode(sanitizedPostalCode);
+          const info = await getPostalCodeInfo(sanitizedPostalCode);
           setPostalCodeInfo(info);
 
           if (info.straatnamen.length === 1) {
@@ -39,12 +40,14 @@ export default function Home() {
   useEffect(() => {
     const result = validateAddress(postalCodeInfo, streetName, houseNumber, postalCode);
     setValidationResult(result);
+    setLocations(result.locations);
   }, [streetName, houseNumber, postalCodeInfo, postalCode]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Handle form submission here
-    console.log({ postalCode, streetName, houseNumber });
+    const result = validateAddress(postalCodeInfo, streetName, houseNumber, postalCode);
+    setValidationResult(result);
+    setLocations(result.locations);
   };
 
   const Map = useMemo(
@@ -130,7 +133,7 @@ export default function Home() {
           {validationResult?.addressValidityMessage && (
             <div
               className={`mb-4 text-sm ${ 
-                validationResult.addressValidityMessage === 'Valid address!'
+                validationResult.addressValidityMessage.startsWith('Valid') || validationResult.addressValidityMessage.startsWith('Found')
                   ? 'text-green-500'
                   : 'text-red-500'
               }`}
@@ -150,7 +153,7 @@ export default function Home() {
         </form>
       </div>
       <div className="w-full max-w-md mt-8">
-        <Map coordinates={validationResult?.selectedCoordinates ?? null} />
+        <Map locations={locations} />
       </div>
     </main>
   );

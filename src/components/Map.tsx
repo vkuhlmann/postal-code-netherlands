@@ -2,28 +2,33 @@
 
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useMemo } from "react";
-import L from "leaflet";
-
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
+import { useEffect } from "react";
+import L, { divIcon } from "leaflet";
+import { FormattedAddress } from "@/app/postal_code";
 
 interface MapProps {
-  coordinates: [number, number] | null;
+  locations: FormattedAddress[];
 }
 
-const MapUpdater = ({ coordinates }: MapProps) => {
+const MapUpdater = ({ locations }: MapProps) => {
   const map = useMap();
   useEffect(() => {
-    if (coordinates) {
-      map.setView(coordinates, 13);
+    if (locations && locations.length > 0) {
+      const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
+      if (coordinates.length > 0) {
+        if (coordinates.length === 1) {
+          map.setView(coordinates[0], 13);
+        } else {
+          const bounds = new L.LatLngBounds(coordinates);
+          map.fitBounds(bounds.pad(0.2));
+        }
+      }
     }
-  }, [coordinates, map]);
+  }, [locations, map]);
   return null;
 };
 
-const Map = ({ coordinates }: MapProps) => {
+const Map = ({ locations }: MapProps) => {
   const customIcon = new L.Icon({
       iconUrl: "/leaflet/marker-icon.png",
       iconRetinaUrl: "/leaflet/marker-icon-2x.png",
@@ -34,26 +39,33 @@ const Map = ({ coordinates }: MapProps) => {
       shadowSize: [41, 41],
     });
 
-  console.info(`Leaflet marker iconUrl: ${markerIcon}`);
-  console.info(`Leaflet marker iconUrl type: ${typeof markerIcon}`);
-  console.info(`Leaflet marker iconUrl.src: ${markerIcon.src}`);
-  console.info(`Leaflet marker iconUrl: ${JSON.stringify(markerIcon)}`);
-  console.info(`customIcon options: ${JSON.stringify(customIcon.options)}`);
-  console.info(`customIcon iconUrl: ${customIcon.options.iconUrl}`);
+  const center: [number, number] = locations && locations.length > 0 && locations[0].coordinates ? locations[0].coordinates : [52.1326, 5.2913];
+
+  const createLabelIcon = (label: string) => {
+    return divIcon({
+      html: `<span>${label}</span>`,
+      className: 'custom-div-icon',
+      iconAnchor: [0, 0]
+    });
+  };
 
   return (
     <MapContainer
-      center={coordinates || [52.1326, 5.2913]} // Coordinates for the Netherlands
-      zoom={coordinates ? 13 : 7}
+        center={center}
+      zoom={locations && locations.length > 0 ? 13 : 7}
       scrollWheelZoom={true}
       style={{ height: "400px", width: "100%" }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxNativeZoom={19}
+          maxZoom={23}
       />
-      {coordinates && <Marker position={coordinates} icon={customIcon} />}
-      <MapUpdater coordinates={coordinates} />
+      {locations && locations.map((location, index) => (
+        location.coordinates && <Marker key={index} position={location.coordinates} icon={locations.length > 1 ? createLabelIcon(location.huis_nlt) : customIcon} />
+      ))}
+      <MapUpdater locations={locations} />
     </MapContainer>
   );
 };

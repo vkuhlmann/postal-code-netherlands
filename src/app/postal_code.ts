@@ -25,6 +25,7 @@ export interface FormattedAddress {
   plaatsnaam: string;
   straatnaam: string;
   rdf: string;
+  coordinates: [number, number] | null;
   details: PdokAddress;
 }
 
@@ -40,7 +41,7 @@ export interface ValidationResult {
   houseNumber: boolean | null;
   validHouseNumbers: string[];
   addressValidityMessage: string;
-  selectedCoordinates: [number, number] | null;
+  locations: FormattedAddress[];
 }
 
 export function formatHuisnummer(
@@ -68,6 +69,20 @@ export function formatHuisnummer(
   }
 
   return huis_nlt;
+}
+
+export function parseCoordinates(
+  centroide_ll: string | null
+) {
+  if (centroide_ll == null) {
+    return null;
+  }
+
+  const match = centroide_ll.match(/POINT\(([^ ]+) ([^ ]+)\)/);
+  if (match) {
+    return ([parseFloat(match[2]), parseFloat(match[1])] as [number, number]);
+  }
+  return null;
 }
 
 export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo> {
@@ -104,6 +119,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
         plaatsnaam: v.woonplaatsnaam,
         straatnaam: v.straatnaam,
         rdf: v.rdf_seealso,
+        coordinates: parseCoordinates(v.centroide_ll),
         details: v,
       };
     });
@@ -128,7 +144,7 @@ export function validateAddress(
       houseNumber: null,
       validHouseNumbers: [],
       addressValidityMessage: "",
-      selectedCoordinates: null,
+      locations: [],
     };
   }
 
@@ -139,6 +155,8 @@ export function validateAddress(
   let validAddresses: FormattedAddress[] = [];
   if (isStreetNameValid) {
     validAddresses = adressen.filter((v) => v.straatnaam === streetName);
+  } else if (!streetName) {
+    validAddresses = adressen;
   }
 
   const houseNumbers = validAddresses.map((v) => v.nummer);
@@ -146,18 +164,22 @@ export function validateAddress(
   const isHouseNumberValid = houseNumber ? houseNumbers.includes(houseNumber) : null;
 
   let addressValidityMessage = "";
-  let selectedCoordinates: [number, number] | null = null;
+  let locations: FormattedAddress[] = [];
 
   if (isStreetNameValid && isHouseNumberValid) {
     addressValidityMessage = "Valid address!";
     const selectedAddress = validAddresses.find((v) => v.nummer === houseNumber);
     if (selectedAddress) {
-      const match = selectedAddress.details.centroide_ll.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-      if (match) {
-        selectedCoordinates = [parseFloat(match[2]), parseFloat(match[1])];
-      }
+        locations = [selectedAddress];
     }
-  } else if (!streetName || !houseNumber || !postalCode) {
+  } else if (isStreetNameValid && !houseNumber) {
+    addressValidityMessage = `Found ${validAddresses.length} addresses on this street.`;
+    locations = validAddresses;
+  } else if (!streetName && !houseNumber && postalCode.length === 6) {
+    addressValidityMessage = `Found ${adressen.length} addresses for this postal code.`;
+    locations = adressen;
+  }
+  else if (!streetName || !houseNumber || !postalCode) {
     addressValidityMessage = "Please fill in all address fields";
   } else {
     addressValidityMessage = "Invalid address!";
@@ -168,32 +190,40 @@ export function validateAddress(
     houseNumber: isHouseNumberValid,
     validHouseNumbers: houseNumbers,
     addressValidityMessage,
-    selectedCoordinates,
+    locations,
   };
 }
 
 
 let addressLookup: PostalCodeInfo | null = null;
 
-export async function getPostalCodeInfo(postalCode: string): Promise<Record<string, Record<string, string[]>>> {
-    if (addressLookup?.postalCode !== postalCode) {
-        addressLookup = await getForPostalCode(postalCode);
-    }
+export async function getPostalCodeInfo(postalCode: string) {
+  if (addressLookup?.postalCode !== postalCode) {
+    addressLookup = await getForPostalCode(postalCode);
+  }
 
-    if (!addressLookup) {
-        return {};
-    }
+  return addressLookup;
+}
 
-    const { adressen } = addressLookup;
+export async function getPostalCodeInfoSimple(postalCode: string) {
+  if (addressLookup?.postalCode !== postalCode) {
+    addressLookup = await getForPostalCode(postalCode);
+  }
 
-    const ans: Record<string, Record<string, string[]>> = {};
+  if (!addressLookup) {
+    return {};
+  }
 
-    for (const address of adressen) {
-        const plaats = (ans[address.plaatsnaam] ??= {});
-        const straat = (plaats[address.straatnaam] ??= []);
+  const { adressen } = addressLookup;
 
-        straat.push(address.nummer);
-    }
+  const ans: Record<string, Record<string, string[]>> = {};
 
-    return ans;
+  for (const address of adressen) {
+    const plaats = (ans[address.plaatsnaam] ??= {});
+    const straat = (plaats[address.straatnaam] ??= []);
+
+    straat.push(address.nummer);
+  }
+
+  return ans;
 }

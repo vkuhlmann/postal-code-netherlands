@@ -24,3 +24,37 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.custom-div-icon {
+  margin: 0px;
+  padding: 0px;
+  /* background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  text-align: center;
+  line-height: 25px;
+  font-weight: bold;
+  color: black;
+  padding: 0 5px;
+  white-space: nowrap;
+  display: block;
+  width: fit-content;
+  position: relative; */
+  /* left: -50%; */
+}
+
+.custom-div-icon > span {
+  display: inline-block;
+  transform: translate(-50%, -50%);
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  text-align: center;
+  line-height: 25px;
+  font-weight: bold;
+  color: black;
+  padding: 0 5px;
+  white-space: nowrap;
+  display: block;
+  width: fit-content;
+}
