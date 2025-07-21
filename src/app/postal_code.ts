@@ -92,8 +92,31 @@ export function parseCoordinates(
   return null;
 }
 
+const CACHE_NAME = 'pdok-api-cache';
+const CACHE_EXPIRATION_TIME = 14 * 24 * 60 * 60 * 1000; // 2 weeks in milliseconds
+
 export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo> {
   postcode = postcode.replaceAll(" ", "");
+  const cacheKey = `pdok-${postcode}`;
+
+  if ('caches' in window) {
+    const cache = await caches.open(CACHE_NAME);
+    const cachedResponse = await cache.match(cacheKey);
+
+    if (cachedResponse) {
+      const cachedData = await cachedResponse.json();
+      const cacheTimestamp = cachedData.timestamp;
+
+      if (Date.now() - cacheTimestamp < CACHE_EXPIRATION_TIME) {
+        console.log(`Serving from cache: ${postcode}`);
+        return cachedData.data;
+      } else {
+        console.log(`Cache expired for: ${postcode}`);
+        await cache.delete(cacheKey);
+      }
+    }
+  }
+
   let docs: PdokAddress[] = [];
 
   if (postcode.length == 6) {
@@ -145,12 +168,20 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
       };
     });
 
-  return {
+  const result: PostalCodeInfo = {
     plaatsnamen,
     straatnamen,
     adressen,
     postalCode: postcode,
   };
+
+  if ('caches' in window) {
+    const cache = await caches.open(CACHE_NAME);
+    const responseToCache = new Response(JSON.stringify({ data: result, timestamp: Date.now() }));
+    await cache.put(cacheKey, responseToCache);
+  }
+
+  return result;
 }
 
 export function validateAddress(
