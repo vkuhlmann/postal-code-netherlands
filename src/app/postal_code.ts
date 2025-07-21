@@ -97,49 +97,62 @@ const CACHE_EXPIRATION_TIME = 14 * 24 * 60 * 60 * 1000; // 2 weeks in millisecon
 
 export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo> {
   postcode = postcode.replaceAll(" ", "");
-  const cacheKey = `pdok-${postcode}`;
-
-  if ('caches' in window) {
-    const cache = await caches.open(CACHE_NAME);
-    const cachedResponse = await cache.match(cacheKey);
-
-    if (cachedResponse) {
-      const cachedData = await cachedResponse.json();
-      const cacheTimestamp = cachedData.timestamp;
-
-      if (Date.now() - cacheTimestamp < CACHE_EXPIRATION_TIME) {
-        console.log(`Serving from cache: ${postcode}`);
-        return cachedData.data;
-      } else {
-        console.log(`Cache expired for: ${postcode}`);
-        await cache.delete(cacheKey);
-      }
-    }
-  }
-
   let docs: PdokAddress[] = [];
+  const cache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
 
   if (postcode.length == 6) {
     let start = 0;
     while (true) {
-      const fetchResponse = await fetch(
-        `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode&start=${start}`
-      );
-      if (!fetchResponse.ok) {
-        throw new Error(`Response status: ${fetchResponse.status}`);
+      const request = `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode&start=${start}`;
+      
+      // Check if request exists in cache.
+      let fetchResponse = await cache?.match(request);
+      if (fetchResponse) {
+        let fetchDate = new Date(fetchResponse.headers.get('date') ?? 0);
+        console.log(`Expiry date ${fetchDate} for ${request}`);
+
+        if (fetchDate.getTime() < Date.now() - CACHE_EXPIRATION_TIME) {
+          await cache?.delete(request);
+          fetchResponse = undefined;
+        }
+      }
+
+      // If not in cache, fetch and store to cache.
+      if (!fetchResponse) {
+        if (start > 0) {
+          // Sleep between requests.
+          await sleep(100);
+        }
+
+        console.log(`Fetching ${request}`);
+        fetchResponse = await fetch(request);
+        if (!fetchResponse.ok) {
+          throw new Error(`Response status: ${fetchResponse.status}`);
+        }
+
+        let headers = new Headers(fetchResponse.headers);
+        headers.set("date", new Date().toISOString());
+
+        // We need to clone the fetchResponse, because its body gets consumed.
+        // Also, since we needed to create a new Headers object, construct a new
+        // Response object with it.
+        await cache?.put(request, new Response(
+          fetchResponse.clone().body,
+          {
+            headers: headers,
+            status: fetchResponse.status,
+            statusText: fetchResponse.statusText
+          }
+        ));
       }
 
       const data: PdokResponse = await fetchResponse.json();
       let newDocs = data.response.docs;
-      console.log(`Fetched ${postcode}, request with start ${start}: got ${newDocs.length} items`);
-
       docs.push(...newDocs);
       start += newDocs.length;
       if (newDocs.length < 100) {
         break;
       }
-      // Sleep for 100 ms between requests
-      await sleep(100);
     }
     console.log(`Fetched ${postcode}, got ${docs.length} items`);
   }
@@ -168,20 +181,12 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
       };
     });
 
-  const result: PostalCodeInfo = {
+  return {
     plaatsnamen,
     straatnamen,
     adressen,
     postalCode: postcode,
   };
-
-  if ('caches' in window) {
-    const cache = await caches.open(CACHE_NAME);
-    const responseToCache = new Response(JSON.stringify({ data: result, timestamp: Date.now() }));
-    await cache.put(cacheKey, responseToCache);
-  }
-
-  return result;
 }
 
 export function validateAddress(
