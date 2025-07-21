@@ -103,61 +103,55 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
   if (postcode.length == 6) {
     let start = 0;
     while (true) {
-      const url = `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode&start=${start}`;
-      let data: PdokResponse;
-      let fetchedFromNetwork = false;
+      const request = `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode&start=${start}`;
+      
+      // Check if request exists in cache.
+      let fetchResponse = await cache?.match(request);
+      if (fetchResponse) {
+        let fetchDate = new Date(fetchResponse.headers.get('date') ?? 0);
+        console.log(`Expiry date ${fetchDate} for ${request}`);
 
-      if (cache) {
-        const cachedResponse = await cache.match(url);
-        if (cachedResponse) {
-          const cachedData = await cachedResponse.json();
-          const cacheTimestamp = cachedData.timestamp;
-
-          if (Date.now() - cacheTimestamp < CACHE_EXPIRATION_TIME) {
-            console.log(`Serving from cache: ${url}`);
-            data = cachedData.data;
-          } else {
-            console.log(`Cache expired for: ${url}`);
-            await cache.delete(url);
-            const fetchResponse = await fetch(url);
-            if (!fetchResponse.ok) {
-              throw new Error(`Response status: ${fetchResponse.status}`);
-            }
-            data = await fetchResponse.json();
-            const responseToCache = new Response(JSON.stringify({ data: data, timestamp: Date.now() }));
-            await cache.put(url, responseToCache);
-            fetchedFromNetwork = true;
-          }
-        } else {
-          const fetchResponse = await fetch(url);
-          if (!fetchResponse.ok) {
-            throw new Error(`Response status: ${fetchResponse.status}`);
-          }
-          data = await fetchResponse.json();
-          const responseToCache = new Response(JSON.stringify({ data: data, timestamp: Date.now() }));
-          await cache.put(url, responseToCache);
-          fetchedFromNetwork = true;
+        if (fetchDate.getTime() < Date.now() - CACHE_EXPIRATION_TIME) {
+          await cache?.delete(request);
+          fetchResponse = undefined;
         }
-      } else {
-        const fetchResponse = await fetch(url);
+      }
+
+      // If not in cache, fetch and store to cache.
+      if (!fetchResponse) {
+        if (start > 0) {
+          // Sleep between requests.
+          await sleep(100);
+        }
+
+        console.log(`Fetching ${request}`);
+        fetchResponse = await fetch(request);
         if (!fetchResponse.ok) {
           throw new Error(`Response status: ${fetchResponse.status}`);
         }
-        data = await fetchResponse.json();
-        fetchedFromNetwork = true;
+
+        let headers = new Headers(fetchResponse.headers);
+        headers.set("date", new Date().toISOString());
+
+        // We need to clone the fetchResponse, because its body gets consumed.
+        // Also, since we needed to create a new Headers object, construct a new
+        // Response object with it.
+        await cache?.put(request, new Response(
+          fetchResponse.clone().body,
+          {
+            headers: headers,
+            status: fetchResponse.status,
+            statusText: fetchResponse.statusText
+          }
+        ));
       }
 
+      const data: PdokResponse = await fetchResponse.json();
       let newDocs = data.response.docs;
-      console.log(`Processed ${postcode}, request with start ${start}: got ${newDocs.length} items`);
-
       docs.push(...newDocs);
       start += newDocs.length;
       if (newDocs.length < 100) {
         break;
-      }
-      if (fetchedFromNetwork) {
-        // Sleep only if we fetched from network
-        await sleep(100);
       }
     }
     console.log(`Fetched ${postcode}, got ${docs.length} items`);
