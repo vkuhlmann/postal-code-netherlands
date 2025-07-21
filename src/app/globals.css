@@ -25,22 +25,13 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-.custom-div-icon {
+.custom-div-icon, .custom-div-icon.leaflet-interactive {
   margin: 0px;
   padding: 0px;
-  /* background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 5px;
-  text-align: center;
-  line-height: 25px;
-  font-weight: bold;
-  color: black;
-  padding: 0 5px;
-  white-space: nowrap;
-  display: block;
-  width: fit-content;
-  position: relative; */
-  /* left: -50%; */
+  /* position: relative; */
+  padding-bottom: 30px;
+  cursor: default;
+  cursor: grab;
 }
 
 .custom-div-icon > span {
@@ -57,4 +48,17 @@ body {
   white-space: nowrap;
   display: block;
   width: fit-content;
+  opacity: 0.7;
+  position: relative;
+  /* padding-bottom: 20px; */
+  /* transition: opacity 0.2s; */
+}
+
+.custom-div-icon:hover {
+    /* opacity: 1; */
+    z-index: 1000 !important;
+}
+
+.custom-div-icon:hover > span {
+  opacity: 1;
 }

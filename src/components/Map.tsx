@@ -6,18 +6,22 @@ import { useEffect } from "react";
 import L, { divIcon } from "leaflet";
 import { FormattedAddress } from "@/app/postal_code";
 
+const MAX_GROUPING_DISTANCE = 0.00001; // Euclidean distance in degrees
+
 interface MapProps {
   locations: FormattedAddress[];
+  onLocationSelect: (location: FormattedAddress) => void;
 }
 
-const MapUpdater = ({ locations }: MapProps) => {
+const MapUpdater = ({ locations }:  { locations: FormattedAddress[] }) => {
   const map = useMap();
   useEffect(() => {
     if (locations && locations.length > 0) {
       const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
       if (coordinates.length > 0) {
         if (coordinates.length === 1) {
-          map.setView(coordinates[0], 13);
+          // map.setView(coordinates[0], 13);
+          map.setView(coordinates[0]);
         } else {
           const bounds = new L.LatLngBounds(coordinates);
           map.fitBounds(bounds.pad(0.2));
@@ -28,7 +32,11 @@ const MapUpdater = ({ locations }: MapProps) => {
   return null;
 };
 
-const Map = ({ locations }: MapProps) => {
+const euclideanDistance = (coord1: [number, number], coord2: [number, number]): number => {
+  return Math.sqrt(Math.pow(coord1[0] - coord2[0], 2) + Math.pow(coord1[1] - coord2[1], 2));
+};
+
+const Map = ({ locations, onLocationSelect }: MapProps) => {
   const customIcon = new L.Icon({
       iconUrl: "/leaflet/marker-icon.png",
       iconRetinaUrl: "/leaflet/marker-icon-2x.png",
@@ -63,7 +71,9 @@ const Map = ({ locations }: MapProps) => {
           maxZoom={23}
       />
       {locations && locations.map((location, index) => (
-        location.coordinates && <Marker key={index} position={location.coordinates} icon={locations.length > 1 ? createLabelIcon(location.huis_nlt) : customIcon} />
+        location.coordinates && <Marker eventHandlers={{
+            click: () => onLocationSelect(location),
+        }} key={index} position={location.coordinates} icon={locations.length > 1 ? createLabelIcon(location.huis_nlt) : customIcon} />
       ))}
       <MapUpdater locations={locations} />
     </MapContainer>

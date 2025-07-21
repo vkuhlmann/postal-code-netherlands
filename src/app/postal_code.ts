@@ -1,5 +1,10 @@
 // src/app/postal_code.ts
 
+// Utility function to sleep for a specified number of milliseconds
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export interface PdokResponse {
   response: {
     docs: PdokAddress[];
@@ -17,6 +22,7 @@ export interface PdokAddress {
   rdf_seealso: string;
   centroide_ll: string;
   centroide_rd: string;
+  postcode?: string
 }
 
 export interface FormattedAddress {
@@ -24,6 +30,7 @@ export interface FormattedAddress {
   huis_nlt: string;
   plaatsnaam: string;
   straatnaam: string;
+  postcode?: string;
   rdf: string;
   coordinates: [number, number] | null;
   details: PdokAddress;
@@ -90,15 +97,28 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
   let docs: PdokAddress[] = [];
 
   if (postcode.length == 6) {
-    const fetchResponse = await fetch(
-      `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode`
-    );
-    if (!fetchResponse.ok) {
-      throw new Error(`Response status: ${fetchResponse.status}`);
-    }
+    let start = 0;
+    while (true) {
+      const fetchResponse = await fetch(
+        `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode&start=${start}`
+      );
+      if (!fetchResponse.ok) {
+        throw new Error(`Response status: ${fetchResponse.status}`);
+      }
 
-    const data: PdokResponse = await fetchResponse.json();
-    docs = data.response.docs;
+      const data: PdokResponse = await fetchResponse.json();
+      let newDocs = data.response.docs;
+      console.log(`Fetched ${postcode}, request with start ${start}: got ${newDocs.length} items`);
+
+      docs.push(...newDocs);
+      start += newDocs.length;
+      if (newDocs.length < 100) {
+        break;
+      }
+      // Sleep for 100 ms between requests
+      await sleep(100);
+    }
+    console.log(`Fetched ${postcode}, got ${docs.length} items`);
   }
 
   const postcode_infos = docs.filter((v) => v.type === "postcode");
@@ -120,6 +140,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
         straatnaam: v.straatnaam,
         rdf: v.rdf_seealso,
         coordinates: parseCoordinates(v.centroide_ll),
+        postcode: v.postcode,
         details: v,
       };
     });
@@ -170,7 +191,7 @@ export function validateAddress(
     addressValidityMessage = "Valid address!";
     const selectedAddress = validAddresses.find((v) => v.nummer === houseNumber);
     if (selectedAddress) {
-        locations = [selectedAddress];
+      locations = [selectedAddress];
     }
   } else if (isStreetNameValid && !houseNumber) {
     addressValidityMessage = `Found ${validAddresses.length} addresses on this street.`;

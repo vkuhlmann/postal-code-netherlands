@@ -50,6 +50,12 @@ export default function Home() {
     setLocations(result.locations);
   };
 
+  const handleLocationSelect = (location: FormattedAddress) => {
+    setPostalCode(location.postcode ?? "");
+    setStreetName(location.straatnaam);
+    setHouseNumber(location.nummer);
+  };
+
   const Map = useMemo(
     () =>
       dynamic(() => import('@/components/Map'), {
@@ -126,7 +132,7 @@ export default function Home() {
 
           {validationResult?.validHouseNumbers && validationResult.validHouseNumbers.length > 0 && (
             <div className="mb-4 text-sm text-gray-600">
-              Geldige huisnummers: {validationResult.validHouseNumbers.join(', ')}
+              Valid house numbers: {validationResult.validHouseNumbers.join(', ')}
             </div>
           )}
 
@@ -153,7 +159,7 @@ export default function Home() {
         </form>
       </div>
       <div className="w-full max-w-md mt-8">
-        <Map locations={locations} />
+        <Map locations={locations} onLocationSelect={handleLocationSelect} />
       </div>
     </main>
   );
