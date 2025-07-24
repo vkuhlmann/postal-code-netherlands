@@ -4,37 +4,25 @@ import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useState } from "react";
 import L, { divIcon } from "leaflet";
-import { FormattedAddress } from "@/app/postal_code";
+import { FormattedAddress, PointOfInterest } from "@/app/postal_code";
+import { euclideanDistance } from "@/utils/locations";
 
 // const MAX_GROUPING_DISTANCE = 0.00002; // Euclidean distance in degrees
 
 interface MapProps {
-  locations: FormattedAddress[];
-  onLocationSelect: (location: FormattedAddress) => void;
+  locations: (PointOfInterest | FormattedAddress)[];
+  onLocationSelect: (location: (PointOfInterest | FormattedAddress)) => void;
+  onMove: (center: [number, number]) => void;
+  onMapInit?: (map: L.Map) => void;
 }
 
-const MapUpdater = ({ locations }:  { locations: FormattedAddress[] }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (locations && locations.length > 0) {
-      const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
-      if (coordinates.length > 0) {
-        if (coordinates.length === 1) {
-          // map.setView(coordinates[0], 13);
-          map.setView(coordinates[0]);
-        } else {
-          const bounds = new L.LatLngBounds(coordinates);
-          if (Math.abs(bounds.getNorth() - bounds.getSouth()) > 0.0001 && Math.abs(bounds.getEast() - bounds.getWest()) > 0.0001) {
-            map.fitBounds(bounds.pad(0.2));
-          } else {
-            map.setView(bounds.getCenter(), 13);
-          }
-        }
-      }
-    }
-  }, [locations, map]);
-  return null;
-};
+// const MapUpdater = ({ locations }:  { locations: FormattedAddress[] }) => {
+//   const map = useMap();
+//   useEffect(() => {
+//     setMapViewToLocations(map, locations);
+//   }, [locations, map]);
+//   return null;
+// };
 
 const MapZoomHandler = ({ onZoomChange }: { onZoomChange: (zoom: number) => void }) => {
   const map = useMap();
@@ -52,11 +40,34 @@ const MapZoomHandler = ({ onZoomChange }: { onZoomChange: (zoom: number) => void
   return null;
 };
 
-const euclideanDistance = (coord1: [number, number], coord2: [number, number]): number => {
-  return Math.sqrt(Math.pow(coord1[0] - coord2[0], 2) + Math.pow(coord1[1] - coord2[1], 2));
+const MapMoveHandler = ({ onMove }: { onMove: (center: [number, number]) => void }) => {
+  const map = useMap();
+  useEffect(() => {
+    const handleMove = () => {
+      const center = map.getCenter();
+      onMove([center.lat, center.lng]);
+    };
+    map.on('moveend', handleMove);
+    // // Initial center position
+    // onMove([map.getCenter().lat, map.getCenter().lng]);
+    return () => {
+      map.off('moveend', handleMove);
+    };
+  }, [map, onMove]);
+  return null;
+}
+
+const MapInitializer = ({ onMapInit }: { onMapInit?: (map: L.Map) => void }) => {
+  const map = useMap();
+  useEffect(() => {
+    if (onMapInit) {
+      onMapInit(map);
+    }
+  }, [map, onMapInit]);
+  return null;
 };
 
-const Map = ({ locations, onLocationSelect }: MapProps) => {
+const Map = ({ locations, onLocationSelect, onMove, onMapInit }: MapProps) => {
   const [zoom, setZoom] = useState(7); // Initial zoom level
 
   const getGroupingDistance = (currentZoom: number): number => {
@@ -96,7 +107,7 @@ const Map = ({ locations, onLocationSelect }: MapProps) => {
     });
   };
 
-  const groupedLocations: (FormattedAddress | FormattedAddress[])[] = [];
+  const groupedLocations: (PointOfInterest | PointOfInterest[])[] = [];
   const usedIndices = new Set<number>();
 
   locations.forEach((location, index) => {
@@ -104,7 +115,7 @@ const Map = ({ locations, onLocationSelect }: MapProps) => {
       return;
     }
 
-    const group: FormattedAddress[] = [location];
+    const group: PointOfInterest[] = [location];
     usedIndices.add(index);
 
     if (location.coordinates) {
@@ -144,9 +155,18 @@ const Map = ({ locations, onLocationSelect }: MapProps) => {
       {groupedLocations.map((item, index) => {
         if (Array.isArray(item)) {
           // This is a group of locations
-          const firstHouseNumber = Math.min(...item.map(loc => parseInt(loc.huis_nlt.replace(/[^0-9]/g, ''))));
-          const lastHouseNumber = Math.max(...item.map(loc => parseInt(loc.huis_nlt.replace(/[^0-9]/g, ''))));
-          const label = `${firstHouseNumber}-${lastHouseNumber}`;
+          let labels = item.map(loc => loc.label);
+
+          console.log(`Group ${index} labels:`, labels);
+          const lowestLabel = labels.reduce((a, b) => a < b ? a : b);
+          const highestLabel = labels.reduce((a, b) => a > b ? a : b);
+          console.log(`Lowest label: ${lowestLabel}, Highest label: ${highestLabel}`);
+
+          const label = lowestLabel === highestLabel ? lowestLabel : `${lowestLabel} - ${highestLabel}`;
+
+          // const firstHouseNumber = Math.min(...item.map(loc => parseInt(loc.huis_nlt.replace(/[^0-9]/g, ''))));
+          // const lastHouseNumber = Math.max(...item.map(loc => parseInt(loc.huis_nlt.replace(/[^0-9]/g, ''))));
+          // const label = `${firstHouseNumber}-${lastHouseNumber}`;
           const groupCenter = item[0].coordinates; // Use the first location's coordinates as the group center
 
           return groupCenter && (
@@ -165,11 +185,13 @@ const Map = ({ locations, onLocationSelect }: MapProps) => {
         } else {
           // This is a single location
           const location = item;
+          const label = location.label;
+          // location.huis_nlt ? location.huis_nlt : (location.postcode ?? "empty");
           return location.coordinates && (
             <Marker
               key={index}
               position={location.coordinates}
-              icon={locations.length > 1 ? createLabelIcon(location.huis_nlt) : customIcon}
+              icon={locations.length > 1 ? createLabelIcon(label) : customIcon}
               eventHandlers={{
                 click: () => onLocationSelect(location),
               }}
@@ -177,8 +199,9 @@ const Map = ({ locations, onLocationSelect }: MapProps) => {
           );
         }
       })}
-      <MapUpdater locations={locations} />
       <MapZoomHandler onZoomChange={setZoom} />
+      <MapMoveHandler onMove={onMove} />
+      <MapInitializer onMapInit={onMapInit} />
     </MapContainer>
   );
 };

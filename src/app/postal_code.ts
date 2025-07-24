@@ -1,39 +1,35 @@
 // src/app/postal_code.ts
 
-// Utility function to sleep for a specified number of milliseconds
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+import { PdokAddress, PdokDoc, PdokItem, PdokLocalized, PdokPostcode, PdokResponse } from "@/types/pdok";
+import { fetchPdokDocs } from "@/utils/pdok_api";
+
+
+export interface _PointOfInterest {
+  type : "adres" | "postcode";
+
+  coordinates?: [number, number];
+  label: string;
+  details: PdokDoc;
 }
 
-export interface PdokResponse {
-  response: {
-    docs: PdokAddress[];
-  };
+export type PointOfInterest = FormattedAddress | PostalcodePOI;
+
+export interface PostalcodePOI extends _PointOfInterest {
+  type: "postcode";
 }
 
-export interface PdokAddress {
-  type: "adres" | "postcode";
-  woonplaatsnaam: string;
-  straatnaam: string;
-  huisnummer: number;
-  huisnummertoevoeging?: string;
-  huisletter?: string;
-  huis_nlt: string;
-  rdf_seealso: string;
-  centroide_ll: string;
-  centroide_rd: string;
-  postcode?: string
-}
+export interface FormattedAddress extends _PointOfInterest {
+  type: "adres";
 
-export interface FormattedAddress {
   nummer: string;
   huis_nlt: string;
   plaatsnaam: string;
   straatnaam: string;
   postcode?: string;
   rdf: string;
-  coordinates: [number, number] | null;
+  coordinates?: [number, number];
   details: PdokAddress;
+  label: string;
 }
 
 export interface PostalCodeInfo {
@@ -42,6 +38,7 @@ export interface PostalCodeInfo {
   adressen: FormattedAddress[];
   postalCode: string;
 }
+
 
 export interface ValidationResult {
   streetName: boolean | null;
@@ -82,80 +79,39 @@ export function parseCoordinates(
   centroide_ll: string | null
 ) {
   if (centroide_ll == null) {
-    return null;
+    return undefined;
   }
 
   const match = centroide_ll.match(/POINT\(([^ ]+) ([^ ]+)\)/);
   if (match) {
     return ([parseFloat(match[2]), parseFloat(match[1])] as [number, number]);
   }
-  return null;
+  return undefined;
 }
 
-const CACHE_NAME = 'pdok-api-cache';
-const CACHE_EXPIRATION_TIME = 14 * 24 * 60 * 60 * 1000; // 2 weeks in milliseconds
 
 export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo> {
   postcode = postcode.replaceAll(" ", "");
-  const docs: PdokAddress[] = [];
-  const cache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
 
-  if (postcode.length == 6) {
-    let start = 0;
-    while (true) {
-      const request = `https://api.pdok.nl/bzk/locatieserver/search/v3_1/free?q=${postcode}&rows=100&df=postcode&start=${start}`;
-      
-      // Check if request exists in cache.
-      let fetchResponse = await cache?.match(request);
-      if (fetchResponse) {
-        const fetchDate = new Date(fetchResponse.headers.get('date') ?? 0);
-        console.log(`Expiry date ${fetchDate} for ${request}`);
-
-        if (fetchDate.getTime() < Date.now() - CACHE_EXPIRATION_TIME) {
-          await cache?.delete(request);
-          fetchResponse = undefined;
-        }
-      }
-
-      // If not in cache, fetch and store to cache.
-      if (!fetchResponse) {
-        if (start > 0) {
-          // Sleep between requests.
-          await sleep(100);
-        }
-
-        console.log(`Fetching ${request}`);
-        fetchResponse = await fetch(request);
-        if (!fetchResponse.ok) {
-          throw new Error(`Response status: ${fetchResponse.status}`);
-        }
-
-        const headers = new Headers(fetchResponse.headers);
-        headers.set("date", new Date().toISOString());
-
-        // We need to clone the fetchResponse, because its body gets consumed.
-        // Also, since we needed to create a new Headers object, construct a new
-        // Response object with it.
-        await cache?.put(request, new Response(
-          fetchResponse.clone().body,
-          {
-            headers: headers,
-            status: fetchResponse.status,
-            statusText: fetchResponse.statusText
-          }
-        ));
-      }
-
-      const data: PdokResponse = await fetchResponse.json();
-      const newDocs = data.response.docs;
-      docs.push(...newDocs);
-      start += newDocs.length;
-      if (newDocs.length < 100) {
-        break;
-      }
-    }
-    console.log(`Fetched ${postcode}, got ${docs.length} items`);
+  if (postcode.length !== 6) {
+    return {
+      plaatsnamen: [],
+      straatnamen: [],
+      adressen: [],
+      postalCode: postcode,
+    };
   }
+
+  const docs = await fetchPdokDocs<PdokAddress | PdokPostcode>(
+    "/free",
+    [
+      ["q", postcode],
+      ["rows", 100],
+      ["df", "postcode"],
+      ["fq", "type:(adres OR postcode)"]
+    ]
+  );
+  console.log(`Fetched ${postcode}, got ${docs.length} items`);
 
   const postcode_infos = docs.filter((v) => v.type === "postcode");
   const plaatsnamen = [...new Set(postcode_infos.map((v) => v.woonplaatsnaam))].sort();
@@ -164,13 +120,16 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
   const adressen: FormattedAddress[] = docs
     .filter((v) => v.type === "adres")
     .map((v) => {
+      const formattedNumber = formatHuisnummer(
+        v.huisnummer,
+        v.huisnummertoevoeging,
+        v.huisletter,
+        v.huis_nlt
+      );
+
       return {
-        nummer: formatHuisnummer(
-          v.huisnummer,
-          v.huisnummertoevoeging,
-          v.huisletter,
-          v.huis_nlt
-        ),
+        type: "adres",
+        nummer: formattedNumber,
         huis_nlt: v.huis_nlt,
         plaatsnaam: v.woonplaatsnaam,
         straatnaam: v.straatnaam,
@@ -178,6 +137,7 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
         coordinates: parseCoordinates(v.centroide_ll),
         postcode: v.postcode,
         details: v,
+        label: formattedNumber
       };
     });
 
@@ -187,6 +147,30 @@ export async function getForPostalCode(postcode: string): Promise<PostalCodeInfo
     adressen,
     postalCode: postcode,
   };
+}
+
+export async function getPostalCodesByCoordinates([lat, lon]: [number, number], { radius, maxCount }: { radius: number, maxCount: number }) {
+  const docs = await fetchPdokDocs<PdokLocalized>(
+    "/reverse",
+    [
+      ["type", "postcode"],
+      ["distance", (radius + 0.5).toFixed()],
+      ["lat", lat],
+      ["lon", lon],
+      ["fl", "id,postcode,afstand,weergavenaam,type,centroide_ll,woonplaatsnaam"]
+    ],
+    { maxCount }
+  );
+  console.log(`Fetched postal codes around ${[lat, lon]}, got ${docs.length} items`);
+
+  const result: PointOfInterest[] = docs.map((v) : PostalcodePOI => ({
+    "type": "postcode",
+    "label": v.postcode,
+    "coordinates": parseCoordinates(v.centroide_ll),
+    "details": v
+  })).filter((v) => v.coordinates != null);
+
+  return result;
 }
 
 export function validateAddress(
@@ -240,6 +224,9 @@ export function validateAddress(
     addressValidityMessage = "Please fill in all address fields";
   } else {
     addressValidityMessage = "Invalid address!";
+    console.log("Invalid address:", { streetName, houseNumber, postalCode, 
+      isStreetNameValid, isHouseNumberValid, straatnamen, adressen });
+
   }
 
   return {

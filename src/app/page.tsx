@@ -1,8 +1,31 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { getPostalCodeInfo, PostalCodeInfo, validateAddress, ValidationResult, FormattedAddress } from './postal_code';
+import L, { map } from 'leaflet';
+import { getPostalCodeInfo, getPostalCodesByCoordinates, PostalCodeInfo, validateAddress, ValidationResult, FormattedAddress, PointOfInterest } from './postal_code';
+import { euclideanDistance } from '@/utils/locations';
+
+
+
+export function setMapViewToLocations(map : L.Map, locations: FormattedAddress[]) {
+  if (locations && locations.length > 0) {
+      const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
+      if (coordinates.length > 0) {
+        if (coordinates.length === 1) {
+          // map.setView(coordinates[0], 13);
+          map.setView(coordinates[0]);
+        } else {
+          const bounds = new L.LatLngBounds(coordinates);
+          if (Math.abs(bounds.getNorth() - bounds.getSouth()) > 0.0001 && Math.abs(bounds.getEast() - bounds.getWest()) > 0.0001) {
+            map.fitBounds(bounds.pad(0.2));
+          } else {
+            map.setView(bounds.getCenter(), 13);
+          }
+        }
+      }
+    }
+}
 
 export default function Home() {
   const [postalCode, setPostalCode] = useState('');
@@ -11,7 +34,13 @@ export default function Home() {
 
   const [postalCodeInfo, setPostalCodeInfo] = useState<PostalCodeInfo | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const [locations, setLocations] = useState<FormattedAddress[]>([]);
+  const [locations, setLocations] = useState<(PointOfInterest | FormattedAddress)[]>([]);
+  const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  
+  // Debounce timer for map movement
+  const mapMoveTimer = useRef<NodeJS.Timeout | null>(null);
+  // Map reference for direct map control
+  const mapRef = useRef<L.Map | null>(null);
 
   useEffect(() => {
     const checkPostalCode = async () => {
@@ -41,20 +70,95 @@ export default function Home() {
     const result = validateAddress(postalCodeInfo, streetName, houseNumber, postalCode);
     setValidationResult(result);
     setLocations(result.locations);
+    if (mapRef.current) {
+      setMapViewToLocations(mapRef.current, result.locations);
+    }
   }, [streetName, houseNumber, postalCodeInfo, postalCode]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (mapMoveTimer.current) {
+        clearTimeout(mapMoveTimer.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const result = validateAddress(postalCodeInfo, streetName, houseNumber, postalCode);
     setValidationResult(result);
     setLocations(result.locations);
+    if (mapRef.current) {
+      setMapViewToLocations(mapRef.current, result.locations);
+    }
   };
 
-  const handleLocationSelect = (location: FormattedAddress) => {
-    setPostalCode(location.postcode ?? "");
-    setStreetName(location.straatnaam);
-    setHouseNumber(location.nummer);
+  const handleLocationSelect = (location: PointOfInterest) => {
+    const postalCode = location.details.postcode;
+    const streetName = location.details.straatnaam;
+    const houseNumber = location.type == "adres" && location.nummer;
+
+    if (postalCode) {
+      setPostalCode(postalCode);
+    }
+    if (streetName) {
+      setStreetName(streetName);
+    }
+    if (houseNumber) {
+      setHouseNumber(houseNumber);
+    }
+    };
+
+  const handleMapInit = (map: L.Map) => {
+    mapRef.current = map;
+    console.log('Map initialized:', map);
   };
+
+  const handleMapMove = (center: [number, number]) => {
+    setMapCenter(center);
+  };
+
+  useEffect(() => {
+    const center = mapCenter;
+
+    console.log('Map moved to:', center);
+    if (postalCodeInfo != null || !center) {
+      return;
+    }
+
+    // Clear previous timer
+    if (mapMoveTimer.current) {
+      clearTimeout(mapMoveTimer.current);
+    }
+
+    let map = mapRef.current;
+    if (!map) {
+      console.error('Map reference is not set');
+      return;
+    }
+
+    let bounds = map.getBounds();
+    let diameterDegrees = euclideanDistance(bounds.getNorthEast(), bounds.getSouthWest());
+    
+    // Approximate conversion from degrees to meters
+    // Is approximately 10 km / 90 degrees = 111 km per degree
+    let diameterMeters = diameterDegrees * 111320;
+
+    console.log('Map bounds diameter in degrees:', diameterDegrees);
+    console.log('Map bounds diameter in meters:', diameterMeters);
+
+    // Set new timer for debounced fetch
+    mapMoveTimer.current = setTimeout(async () => {
+      try {
+        console.log('Fetching postal codes for coordinates:', center);
+        const postalCodes = await getPostalCodesByCoordinates(center, { radius: diameterMeters / 2, maxCount: 100 });
+        setLocations(postalCodes.length < 100 ? postalCodes : []);
+      } catch (error) {
+        console.error('Failed to fetch postal codes for coordinates:', error);
+      }
+    }, 500); // 500ms debounce delay
+  }, [postalCodeInfo, mapCenter]);
 
   const Map = useMemo(
     () =>
@@ -159,7 +263,12 @@ export default function Home() {
         </form>
       </div>
       <div className="w-full max-w-md mt-8">
-        <Map locations={locations} onLocationSelect={handleLocationSelect} />
+        <Map 
+          locations={locations} 
+          onLocationSelect={handleLocationSelect} 
+          onMove={handleMapMove}
+          onMapInit={handleMapInit}
+        />
       </div>
     </main>
   );
