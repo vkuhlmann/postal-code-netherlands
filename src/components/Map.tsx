@@ -157,10 +157,10 @@ const Map = ({ locations, onLocationSelect, onMove, onMapInit }: MapProps) => {
           // This is a group of locations
           let labels = item.map(loc => loc.label);
 
-          console.log(`Group ${index} labels:`, labels);
+          // console.log(`Group ${index} labels:`, labels);
           const lowestLabel = labels.reduce((a, b) => a < b ? a : b);
           const highestLabel = labels.reduce((a, b) => a > b ? a : b);
-          console.log(`Lowest label: ${lowestLabel}, Highest label: ${highestLabel}`);
+          // console.log(`Lowest label: ${lowestLabel}, Highest label: ${highestLabel}`);
 
           const label = lowestLabel === highestLabel ? lowestLabel : `${lowestLabel} - ${highestLabel}`;
 

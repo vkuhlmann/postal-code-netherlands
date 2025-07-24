@@ -1,5 +1,3 @@
-import { parseCoordinates } from "@/app/postal_code";
-
 export interface PdokResponse<DocType extends PdokDoc = PdokDoc> {
   response: {
     numFound?: number;

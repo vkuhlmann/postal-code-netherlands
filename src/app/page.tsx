@@ -3,28 +3,28 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import L, { map } from 'leaflet';
-import { getPostalCodeInfo, getPostalCodesByCoordinates, PostalCodeInfo, validateAddress, ValidationResult, FormattedAddress, PointOfInterest } from './postal_code';
+import { getPostalCodeInfo, getPostalCodesByCoordinates, PostalCodeInfo, validateAddress, ValidationResult, FormattedAddress, PointOfInterest, findCachedPostalCodesByCoordinates, loadCoordinateCacheFromPdokCache } from './postal_code';
 import { euclideanDistance } from '@/utils/locations';
 
 
 
-export function setMapViewToLocations(map : L.Map, locations: FormattedAddress[]) {
+export function setMapViewToLocations(map: L.Map, locations: FormattedAddress[]) {
   if (locations && locations.length > 0) {
-      const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
-      if (coordinates.length > 0) {
-        if (coordinates.length === 1) {
-          // map.setView(coordinates[0], 13);
-          map.setView(coordinates[0]);
+    const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
+    if (coordinates.length > 0) {
+      if (coordinates.length === 1) {
+        // map.setView(coordinates[0], 13);
+        map.setView(coordinates[0]);
+      } else {
+        const bounds = new L.LatLngBounds(coordinates);
+        if (Math.abs(bounds.getNorth() - bounds.getSouth()) > 0.0001 && Math.abs(bounds.getEast() - bounds.getWest()) > 0.0001) {
+          map.fitBounds(bounds.pad(0.2));
         } else {
-          const bounds = new L.LatLngBounds(coordinates);
-          if (Math.abs(bounds.getNorth() - bounds.getSouth()) > 0.0001 && Math.abs(bounds.getEast() - bounds.getWest()) > 0.0001) {
-            map.fitBounds(bounds.pad(0.2));
-          } else {
-            map.setView(bounds.getCenter(), 13);
-          }
+          map.setView(bounds.getCenter(), 13);
         }
       }
     }
+  }
 }
 
 export default function Home() {
@@ -36,7 +36,7 @@ export default function Home() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [locations, setLocations] = useState<(PointOfInterest | FormattedAddress)[]>([]);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
-  
+
   // Debounce timer for map movement
   const mapMoveTimer = useRef<NodeJS.Timeout | null>(null);
   // Map reference for direct map control
@@ -108,7 +108,7 @@ export default function Home() {
     if (houseNumber) {
       setHouseNumber(houseNumber);
     }
-    };
+  };
 
   const handleMapInit = (map: L.Map) => {
     mapRef.current = map;
@@ -120,10 +120,14 @@ export default function Home() {
   };
 
   useEffect(() => {
+    loadCoordinateCacheFromPdokCache();
+  }, []);
+
+  useEffect(() => {
     const center = mapCenter;
 
     console.log('Map moved to:', center);
-    if (postalCodeInfo != null || !center) {
+    if (postalCodeInfo || !center) {
       return;
     }
 
@@ -140,7 +144,7 @@ export default function Home() {
 
     let bounds = map.getBounds();
     let diameterDegrees = euclideanDistance(bounds.getNorthEast(), bounds.getSouthWest());
-    
+
     // Approximate conversion from degrees to meters
     // Is approximately 10 km / 90 degrees = 111 km per degree
     let diameterMeters = diameterDegrees * 111320;
@@ -152,8 +156,38 @@ export default function Home() {
     mapMoveTimer.current = setTimeout(async () => {
       try {
         console.log('Fetching postal codes for coordinates:', center);
-        const postalCodes = await getPostalCodesByCoordinates(center, { radius: diameterMeters / 2, maxCount: 100 });
-        setLocations(postalCodes.length < 100 ? postalCodes : []);
+        let radius = diameterMeters / 2;
+        const desired = 150;
+
+        const cachedPostalCodes = findCachedPostalCodesByCoordinates({ center, radius }, desired);
+        if (cachedPostalCodes == "overload") {
+          console.warn('Not fetching postal codes, overload detected');
+          setLocations([]);
+          return;
+        }
+
+        if (cachedPostalCodes) {
+          console.log(`Found ${cachedPostalCodes.length} results in cache`);
+          console.log('Cached postal codes:', cachedPostalCodes.map(r => r.label).slice(0, 5));
+          setLocations(cachedPostalCodes);
+          return;
+        }
+
+        radius *= 1.2;
+
+        if (radius > 5000) {
+          console.warn('Radius is too large, skipping fetch:', radius);
+          setLocations([]);
+          return;
+        }
+
+        console.log(`Radius is ${radius}`);
+
+        const { exhaustive, results: postalCodes } = await getPostalCodesByCoordinates(
+          { center, radius }, { fetchCapacity: desired }
+        );
+        setLocations(exhaustive ? postalCodes : []);
+        // setLocations(postalCodes.length < 100 ? postalCodes : []);
       } catch (error) {
         console.error('Failed to fetch postal codes for coordinates:', error);
       }
@@ -242,11 +276,10 @@ export default function Home() {
 
           {validationResult?.addressValidityMessage && (
             <div
-              className={`mb-4 text-sm ${ 
-                validationResult.addressValidityMessage.startsWith('Valid') || validationResult.addressValidityMessage.startsWith('Found')
-                  ? 'text-green-500'
-                  : 'text-red-500'
-              }`}
+              className={`mb-4 text-sm ${validationResult.addressValidityMessage.startsWith('Valid') || validationResult.addressValidityMessage.startsWith('Found')
+                ? 'text-green-500'
+                : 'text-red-500'
+                }`}
             >
               {validationResult.addressValidityMessage}
             </div>
@@ -263,9 +296,9 @@ export default function Home() {
         </form>
       </div>
       <div className="w-full max-w-md mt-8">
-        <Map 
-          locations={locations} 
-          onLocationSelect={handleLocationSelect} 
+        <Map
+          locations={locations}
+          onLocationSelect={handleLocationSelect}
           onMove={handleMapMove}
           onMapInit={handleMapInit}
         />

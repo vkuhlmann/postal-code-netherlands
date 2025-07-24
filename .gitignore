@@ -40,3 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 example_for_postal_code.json
+FILE_STRUCTURE.md
+src/utils/README_coordinate_cache.md
