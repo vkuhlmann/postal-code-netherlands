@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import dynamic from 'next/dynamic';
 import L, { map } from 'leaflet';
 import { euclideanDistance } from '@/utils/locations';
 import { FormattedAddress } from '@/types/postal_code';

@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import dynamic from 'next/dynamic';
-import L, { map } from 'leaflet';
+import L from 'leaflet';
+import Map from '@/components/Map';
 import {
   getPostalCodeInfo, getPostalCodesByCoordinates, PostalCodeInfo,
   validateAddress, ValidationResult, FormattedAddress, PointOfInterest,
@@ -186,14 +186,6 @@ export default function Home() {
     }, 500); // 500ms debounce delay
   }, [postalCodeInfo, mapCenter]);
 
-  const Map = useMemo(
-    () =>
-      dynamic(() => import('@/components/Map'), {
-        loading: () => <p>A map is loading</p>,
-        ssr: false,
-      }),
-    []
-  );
 
   const getBorderColor = (status: boolean | null) => {
     if (status === null) return '';
