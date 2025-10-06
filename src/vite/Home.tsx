@@ -17,6 +17,7 @@ export default function Home() {
   const [postalCode, setPostalCode] = useState('');
   const [streetName, setStreetName] = useState('');
   const [houseNumber, setHouseNumber] = useState('');
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const [postalCodeInfo, setPostalCodeInfo] = useState<PostalCodeInfo | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
@@ -193,100 +194,112 @@ export default function Home() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <div className="w-full max-w-md">
-        <form
-          className="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4"
-          onSubmit={handleSubmit}
-        >
-          <div className="mb-4">
-            <label
-              className="block text-gray-700 text-sm font-bold mb-2"
-              htmlFor="postalCode"
-            >
-              Postal Code
-            </label>
-            <input
-              className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline`}
-              id="postalCode"
-              type="text"
-              placeholder="e.g. 1234 AB"
-              value={postalCode}
-              onChange={(e) => setPostalCode(e.target.value)}
-            />
-          </div>
-          <div className="mb-4">
-            <label
-              className="block text-gray-700 text-sm font-bold mb-2"
-              htmlFor="streetName"
-            >
-              Street Name
-            </label>
-            <input
-              className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${getBorderColor(
-                validationResult?.streetName ?? null
-              )}`}
-              id="streetName"
-              type="text"
-              placeholder="e.g. Main Street"
-              value={streetName}
-              onChange={(e) => setStreetName(e.target.value)}
-            />
-          </div>
-          <div className="mb-6">
-            <label
-              className="block text-gray-700 text-sm font-bold mb-2"
-              htmlFor="houseNumber"
-            >
-              House Number
-            </label>
-            <input
-              className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${getBorderColor(
-                validationResult?.houseNumber ?? null
-              )}`}
-              id="houseNumber"
-              type="text"
-              placeholder="e.g. 123"
-              value={houseNumber}
-              onChange={(e) => setHouseNumber(e.target.value)}
-            />
-          </div>
-
-          {validationResult?.validHouseNumbers && validationResult.validHouseNumbers.length > 0 && (
-            <div className="mb-4 text-sm text-gray-600">
-              Valid house numbers: {validationResult.validHouseNumbers.join(', ')}
-            </div>
-          )}
-
-          {validationResult?.addressValidityMessage && (
-            <div
-              className={`mb-4 text-sm ${validationResult.addressValidityMessage.startsWith('Valid') || validationResult.addressValidityMessage.startsWith('Found')
-                ? 'text-green-500'
-                : 'text-red-500'
-                }`}
-            >
-              {validationResult.addressValidityMessage}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <button
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-              type="submit"
-            >
-              Submit
-            </button>
-          </div>
-        </form>
-      </div>
-      <div className="w-full max-w-md mt-8">
+    <main className="relative h-[100svh] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      {/* Map fills the screen */}
+      <div className="absolute inset-0 z-10">
         <Map
           locations={locations}
           onLocationSelect={handleLocationSelect}
           onMove={handleMapMove}
           onMapInit={handleMapInit}
+          className="h-full w-full"
         />
       </div>
+
+      {/* Floating action button to toggle panel */}
+      <button
+        aria-label={panelOpen ? 'Hide search panel' : 'Show search panel'}
+        onClick={() => setPanelOpen(!panelOpen)}
+        className="fixed z-30 bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg grid place-items-center hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+      >
+        {panelOpen ? (
+          <span className="text-xl">×</span>
+        ) : (
+          <span className="text-xl">⌕</span>
+        )}
+      </button>
+
+      {/* Collapsible side panel */}
+      <section
+        className={`fixed z-20 top-0 bottom-0 left-0 w-[min(92vw,420px)] max-w-full bg-white/95 dark:bg-black/80 backdrop-blur border-r border-black/10 dark:border-white/10 shadow-xl transition-transform duration-300 ease-in-out ${
+          panelOpen ? 'translate-x-0' : '-translate-x-[calc(100%_-_3.5rem)] md:-translate-x-full'
+        }`}
+        style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        {/* Drag/peek handle for mobile when closed */}
+        <div className="absolute -right-4 top-16 hidden md:block">
+          {/* spacer for desktop only */}
+        </div>
+        <div className="h-full overflow-y-auto px-4 sm:px-6">
+          <header className="sticky top-0 py-3 mb-2 pr-10">
+            <h1 className="text-lg font-semibold">Find address</h1>
+            {validationResult?.addressValidityMessage && (
+              <p className={`mt-1 text-sm ${validationResult.addressValidityMessage.startsWith('Valid') || validationResult.addressValidityMessage.startsWith('Found') ? 'text-green-600' : 'text-red-600'}`}>
+                {validationResult.addressValidityMessage}
+              </p>
+            )}
+          </header>
+
+          <form className="space-y-4 pb-24" onSubmit={handleSubmit}>
+            <div>
+              <label className="block text-sm font-medium mb-1" htmlFor="postalCode">Postal Code</label>
+              <input
+                id="postalCode"
+                type="text"
+                inputMode="text"
+                autoComplete="postal-code"
+                placeholder="e.g. 1234 AB"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                className="w-full rounded-md border border-black/20 dark:border-white/20 bg-white/90 dark:bg-zinc-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-black dark:text-white"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1" htmlFor="streetName">Street Name</label>
+              <input
+                id="streetName"
+                type="text"
+                autoComplete="address-line1"
+                placeholder="e.g. Main Street"
+                value={streetName}
+                onChange={(e) => setStreetName(e.target.value)}
+                className={`w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-black dark:text-white ${getBorderColor(validationResult?.streetName ?? null)} border-black/20 dark:border-white/20 bg-white/90 dark:bg-zinc-900`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1" htmlFor="houseNumber">House Number</label>
+              <input
+                id="houseNumber"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="address-line2"
+                placeholder="e.g. 123"
+                value={houseNumber}
+                onChange={(e) => setHouseNumber(e.target.value)}
+                className={`w-full rounded-md border px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-black dark:text-white ${getBorderColor(validationResult?.houseNumber ?? null)} border-black/20 dark:border-white/20 bg-white/90 dark:bg-zinc-900`}
+              />
+            </div>
+
+            {validationResult?.validHouseNumbers && validationResult.validHouseNumbers.length > 0 && (
+              <div className="text-sm text-gray-600 dark:text-gray-300">
+                Valid house numbers: {validationResult.validHouseNumbers.join(', ')}
+              </div>
+            )}
+
+            <div className="pt-2">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-white shadow hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+              >
+                Submit
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }

@@ -5,12 +5,7 @@
   --foreground: #171717;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Theme variables consumed via CSS variables; Tailwind classes handle styling */
 
 @media (prefers-color-scheme: dark) {
   :root {
@@ -23,6 +18,18 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+/* Support iOS/Android safe areas and small viewport units */
+.app-safe-area {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 .custom-div-icon, .custom-div-icon.leaflet-interactive {
@@ -61,4 +68,10 @@ body {
 
 .custom-div-icon:hover > span {
   opacity: 1;
+}
+
+/* Ensure Leaflet map fills parent when using h-full */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
 }

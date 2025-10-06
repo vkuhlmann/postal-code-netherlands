@@ -14,6 +14,8 @@ interface MapProps {
   onLocationSelect: (location: (PointOfInterest | FormattedAddress)) => void;
   onMove: (center: [number, number]) => void;
   onMapInit?: (map: L.Map) => void;
+  className?: string;
+  style?: React.CSSProperties;
 }
 
 // const MapUpdater = ({ locations }:  { locations: FormattedAddress[] }) => {
@@ -67,7 +69,7 @@ const MapInitializer = ({ onMapInit }: { onMapInit?: (map: L.Map) => void }) => 
   return null;
 };
 
-const Map = ({ locations, onLocationSelect, onMove, onMapInit }: MapProps) => {
+const Map = ({ locations, onLocationSelect, onMove, onMapInit, className, style }: MapProps) => {
   const [zoom, setZoom] = useState(7); // Initial zoom level
 
   const getGroupingDistance = (currentZoom: number): number => {
@@ -139,12 +141,19 @@ const Map = ({ locations, onLocationSelect, onMove, onMapInit }: MapProps) => {
     }
   });
 
+  const containerStyle: React.CSSProperties = {
+    height: '100%',
+    width: '100%',
+    ...style,
+  };
+
   return (
     <MapContainer
         center={center}
       zoom={locations && locations.length > 0 ? 13 : 7}
       scrollWheelZoom={true}
-      style={{ height: "400px", width: "100%" }}
+      className={className}
+      style={containerStyle}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
