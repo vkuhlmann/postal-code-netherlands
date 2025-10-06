@@ -24,6 +24,9 @@
 # misc
 .DS_Store
 *.pem
+/icon1.jpg
+/icon2.jpg
+/icon3.jpg
 
 # debug
 npm-debug.log*
