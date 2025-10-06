@@ -1,13 +1,25 @@
 import { PostalcodePOI } from '@/types/postal_code';
-import L from 'leaflet';
+import type { LatLngExpression } from 'leaflet';
 
-export function latLngExpressionToTuple (latLngExpr: L.LatLngExpression) {
-   const latLng = L.latLng(latLngExpr);
-
-   return [latLng.lat, latLng.lng];
+export function latLngExpressionToTuple(latLngExpr: LatLngExpression): [number, number] {
+  // Tuple [lat, lng]
+  if (Array.isArray(latLngExpr) && latLngExpr.length === 2) {
+    const [lat, lng] = latLngExpr as [number, number];
+    return [lat, lng];
+  }
+  // Leaflet LatLng object or plain literal
+  if (typeof latLngExpr === 'object' && latLngExpr !== null) {
+    const anyExpr = latLngExpr as any;
+    const lat = anyExpr.lat;
+    const lng = anyExpr.lng ?? anyExpr.lon;
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      return [lat, lng];
+    }
+  }
+  throw new Error('Invalid LatLng expression');
 }
 
-export function euclideanDistance (coord1: L.LatLngExpression, coord2: L.LatLngExpression) {
+export function euclideanDistance(coord1: LatLngExpression, coord2: LatLngExpression) {
   const [lat1, lng1] = latLngExpressionToTuple(coord1);
   const [lat2, lng2] = latLngExpressionToTuple(coord2);
   return Math.sqrt(Math.pow(lat1 - lat2, 2) + Math.pow(lng1 - lng2, 2));

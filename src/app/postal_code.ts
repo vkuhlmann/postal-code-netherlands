@@ -1,6 +1,6 @@
 // src/app/postal_code.ts
 
-import { PdokAddress, PdokDoc, PdokItem, PdokLocalized, PdokPostcode, PdokResponse } from "@/types/pdok";
+import { ParametersType, PdokAddress, PdokDoc, PdokItem, PdokLocalized, PdokPostcode, PdokResponse } from "@/types/pdok";
 import {
   _PointOfInterest,
   PointOfInterest,
@@ -31,14 +31,6 @@ export type {
   ValidationResult,
   CoordinateCacheEntry
 } from "@/types/postal_code";
-
-// Re-export coordinate cache functionality
-export {
-  findCachedPostalCodesByCoordinates,
-  loadCoordinateCacheFromPdokCache,
-  getCoordinateCacheStats,
-  clearCoordinateCache
-};
 
 export function formatHuisnummer(
   nummer: number,
@@ -148,7 +140,7 @@ export async function getPostalCodesByCoordinates(
 
   const [lat, lon] = domain.center;
 
-  const parameters: [string, any][] = [
+  const parameters: ParametersType = [
     ["type", "postcode"],
     // Round up, since the API needs an integer.
     ["distance", (domain.radius + 0.5).toFixed()],

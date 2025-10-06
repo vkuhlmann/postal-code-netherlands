@@ -1,4 +1,4 @@
-import { PdokDoc, PdokResponse } from "@/types/pdok";
+import { ParametersType, PdokDoc, PdokResponse } from "@/types/pdok";
 
 // Utility function to sleep for a specified number of milliseconds
 function sleep(ms: number): Promise<void> {
@@ -8,7 +8,7 @@ function sleep(ms: number): Promise<void> {
 
 export function getPdokRequestUrl(
   path: "/free" | "/lookup" | "/reverse" | "/suggest",
-  parameters: [string, any][],
+  parameters: ParametersType,
 ) {
   // Documented at https://api.pdok.nl/bzk/locatieserver/search/v3_1/ui/#/Locatieserver/free
   // See `example_for_postal_code.json` for an example output.
@@ -24,9 +24,12 @@ export async function getCachedRequests(
   const cache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
   if (!cache) return [];
 
-  let cachedKeys = await cache.keys(`https://api.pdok.nl/bzk/locatieserver/search/v3_1${path}`, {
-    ignoreSearch: true,
-  });
+  const cachedKeys = await cache.keys(
+    `https://api.pdok.nl/bzk/locatieserver/search/v3_1${path}`,
+    {
+      ignoreSearch: true,
+    }
+  );
 
   return cachedKeys.map((request) => {
     const url = new URL(request.url);
@@ -37,7 +40,7 @@ export async function getCachedRequests(
     }
 
     const parameters = params.entries().toArray().filter(
-      ([key, _]) => key !== 'start' && key !== 'rows'
+      ([key,]) => key !== 'start' && key !== 'rows'
     );
     return parameters;
   }).filter((v) => v !== null);
@@ -49,7 +52,7 @@ const CACHE_EXPIRATION_TIME = 14 * 24 * 60 * 60 * 1000; // 2 weeks in millisecon
 
 export async function fetchPdokDocs<T extends PdokDoc>(
   path: "/free" | "/lookup" | "/reverse" | "/suggest",
-  parameters: [string, any][],
+  parameters: ParametersType,
   // options: { fetchCapacity?: number, needComplete?: boolean } = { fetchCapacity: 500, needComplete: true }
   options: { fetchCapacity: number, needComplete: boolean }
 ) {
@@ -124,7 +127,7 @@ export async function fetchPdokDocs<T extends PdokDoc>(
           docs,
         } as const
       }
-      
+
       if (start > 0) {
         // Sleep between requests.
         await sleep(100);

@@ -1,31 +1,17 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import L, { map } from 'leaflet';
-import { getPostalCodeInfo, getPostalCodesByCoordinates, PostalCodeInfo, validateAddress, ValidationResult, FormattedAddress, PointOfInterest, findCachedPostalCodesByCoordinates, loadCoordinateCacheFromPdokCache } from './postal_code';
+import {
+  getPostalCodeInfo, getPostalCodesByCoordinates, PostalCodeInfo,
+  validateAddress, ValidationResult, FormattedAddress, PointOfInterest,
+} from '@/app/postal_code';
 import { euclideanDistance } from '@/utils/locations';
+import {setMapViewToLocations} from '@/utils/map_view';
+import { findCachedPostalCodesByCoordinates, loadCoordinateCacheFromPdokCache } from '@/utils/coordinate_cache';
 
-
-
-export function setMapViewToLocations(map: L.Map, locations: FormattedAddress[]) {
-  if (locations && locations.length > 0) {
-    const coordinates = locations.map(l => l.coordinates).filter(c => c !== null) as [number, number][];
-    if (coordinates.length > 0) {
-      if (coordinates.length === 1) {
-        // map.setView(coordinates[0], 13);
-        map.setView(coordinates[0]);
-      } else {
-        const bounds = new L.LatLngBounds(coordinates);
-        if (Math.abs(bounds.getNorth() - bounds.getSouth()) > 0.0001 && Math.abs(bounds.getEast() - bounds.getWest()) > 0.0001) {
-          map.fitBounds(bounds.pad(0.2));
-        } else {
-          map.setView(bounds.getCenter(), 13);
-        }
-      }
-    }
-  }
-}
 
 export default function Home() {
   const [postalCode, setPostalCode] = useState('');
@@ -42,29 +28,35 @@ export default function Home() {
   // Map reference for direct map control
   const mapRef = useRef<L.Map | null>(null);
 
-  useEffect(() => {
-    const checkPostalCode = async () => {
-      const sanitizedPostalCode = postalCode.replace(/\s/g, '');
-      if (sanitizedPostalCode.length === 6) {
-        try {
-          const info = await getPostalCodeInfo(sanitizedPostalCode);
-          setPostalCodeInfo(info);
+  // React Query: fetch postal code info when code is complete
+  const sanitizedPostalCode = useMemo(() => postalCode.replace(/\s/g, ''), [postalCode]);
 
-          if (info.straatnamen.length === 1) {
-            setStreetName(info.straatnamen[0]);
-          }
-        } catch (error) {
-          console.error('Failed to fetch postal code info:', error);
-          setPostalCodeInfo(null);
-        }
-      } else {
-        setPostalCodeInfo(null);
-        setStreetName('');
-        setHouseNumber('');
-      }
-    };
-    checkPostalCode();
-  }, [postalCode]);
+  const { data: fetchedInfo, isFetching: isPostalLoading, error: postalError } = useQuery<PostalCodeInfo, Error>({
+    queryKey: ['postalCodeInfo', sanitizedPostalCode],
+    queryFn: () => getPostalCodeInfo(sanitizedPostalCode),
+    enabled: sanitizedPostalCode.length === 6,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+
+  // When fetched info arrives, update local state and default street if unique
+  useEffect(() => {
+    if (!fetchedInfo) return;
+    setPostalCodeInfo(fetchedInfo);
+    if (fetchedInfo.straatnamen.length === 1) {
+      setStreetName(fetchedInfo.straatnamen[0]);
+    }
+  }, [fetchedInfo]);
+
+  // Reset dependent fields when postal code is not complete
+  useEffect(() => {
+    if (sanitizedPostalCode.length !== 6) {
+      setPostalCodeInfo(null);
+      setStreetName('');
+      setHouseNumber('');
+    }
+  }, [sanitizedPostalCode]);
 
   useEffect(() => {
     const result = validateAddress(postalCodeInfo, streetName, houseNumber, postalCode);
@@ -136,18 +128,18 @@ export default function Home() {
       clearTimeout(mapMoveTimer.current);
     }
 
-    let map = mapRef.current;
+    const map = mapRef.current;
     if (!map) {
       console.error('Map reference is not set');
       return;
     }
 
-    let bounds = map.getBounds();
-    let diameterDegrees = euclideanDistance(bounds.getNorthEast(), bounds.getSouthWest());
+    const bounds = map.getBounds();
+    const diameterDegrees = euclideanDistance(bounds.getNorthEast(), bounds.getSouthWest());
 
     // Approximate conversion from degrees to meters
     // Is approximately 10 km / 90 degrees = 111 km per degree
-    let diameterMeters = diameterDegrees * 111320;
+    const diameterMeters = diameterDegrees * 111320;
 
     console.log('Map bounds diameter in degrees:', diameterDegrees);
     console.log('Map bounds diameter in meters:', diameterMeters);

@@ -155,7 +155,7 @@ const Map = ({ locations, onLocationSelect, onMove, onMapInit }: MapProps) => {
       {groupedLocations.map((item, index) => {
         if (Array.isArray(item)) {
           // This is a group of locations
-          let labels = item.map(loc => loc.label);
+          const labels = item.map(loc => loc.label);
 
           // console.log(`Group ${index} labels:`, labels);
           const lowestLabel = labels.reduce((a, b) => a < b ? a : b);

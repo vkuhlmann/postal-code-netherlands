@@ -128,11 +128,14 @@ export async function loadCoordinateCacheFromPdokCache(): Promise<void> {
       try {
         // Reconstruct the cache entry by fetching from the existing cache
         // This will use the cached response if available
-        let { docs, exhaustive } = await fetchPdokDocs<PdokLocalized>(
+        const ans = await fetchPdokDocs<PdokLocalized>(
           "/reverse",
           parameters,
           { fetchCapacity: 100, needComplete: false }
         );
+        const { docs } = ans;
+        let { exhaustive } = ans;
+
         console.log(`For ${radius}, ${lat}, ${lon}: `, exhaustive, docs);
 
         if (docs === "overload") {
@@ -160,9 +163,10 @@ export async function loadCoordinateCacheFromPdokCache(): Promise<void> {
           exhaustive = false;
         }
 
-        addToCoordinateCache({ domain, exhaustive, results,
+        addToCoordinateCache({
+          domain, exhaustive, results,
           obtainUrl: getPdokRequestUrl("/reverse", parameters)
-         })
+        })
         console.log(
           `Loaded coordinate cache entry: center=[${lat}, ${lon}], ` +
           `radius=${radius}, results=${results.length}`

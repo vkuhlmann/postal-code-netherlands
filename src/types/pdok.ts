@@ -8,6 +8,8 @@ export interface PdokResponse<DocType extends PdokDoc = PdokDoc> {
   };
 }
 
+export type ParametersType = [string, string | number | boolean][];
+
 export interface PdokDoc {
   bron?: string;
   woonplaatscode?: string;
