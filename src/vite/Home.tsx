@@ -251,7 +251,7 @@ export default function Home() {
   const nextSearchPlaceholder = useMemo(() => {
     switch (selectionFeature) {
       case 'postal_code':
-        return 'Search postal code…';
+        return 'Enter postal code to see addresses…';
       case 'street':
         return 'Search street…';
       case 'house_number':
