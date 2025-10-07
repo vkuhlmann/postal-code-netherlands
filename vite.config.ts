@@ -19,12 +19,40 @@ export default defineConfig({
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#1d4ed8',
+        description: "View addresses on a map for Dutch postal codes.",
+        orientation: "natural",
+        screenshots: [
+          {
+            "src": "screenshots/Screenshot_20251007-145205.png",
+            "sizes": "1080x2400",
+            "type": "image/png"
+          },
+          {
+            "src": "screenshots/Screenshot_20251007-145214.png",
+            "sizes": "1080x2400",
+            "type": "image/png"
+          },
+          {
+            "src": "screenshots/Screenshot_20251007-145428.png",
+            "sizes": "1080x2400",
+            "type": "image/png"
+          }
+        ],
         icons: [
           {
-            // Relative icon path works with any base path
-            src: 'favicon.ico',
-            sizes: '48x48 64x64 96x96 128x128 256x256',
-            type: 'image/x-icon'
+            "src": "icons/icon_512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+          },
+          {
+            "src": "icons/icon_192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+          },
+          {
+            "src": "favicon.ico",
+            "sizes": "48x48 64x64 96x96",
+            "type": "image/x-icon"
           }
         ]
       }
