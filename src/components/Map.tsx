@@ -147,19 +147,28 @@ const Map = ({ locations, onLocationSelect, onMove, onMapInit, className, style 
     ...style,
   };
 
+  // Rough bounding box for the Netherlands
+  const nlBounds: L.LatLngBoundsExpression = [
+    [50.5, 1.3],   // Southwest (approx.)
+    [53.7, 8.3],   // Northeast (approx.)
+  ];
+
   return (
     <MapContainer
-        center={center}
+      center={center}
       zoom={locations && locations.length > 0 ? 13 : 7}
       scrollWheelZoom={true}
       className={className}
       style={containerStyle}
+      maxBounds={nlBounds}
+      maxBoundsViscosity={1.0}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxNativeZoom={19}
-          maxZoom={23}
+        maxNativeZoom={19}
+        maxZoom={23}
+        noWrap={true}
       />
       {groupedLocations.map((item, index) => {
         if (Array.isArray(item)) {
