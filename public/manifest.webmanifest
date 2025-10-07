@@ -7,6 +7,12 @@
   "background_color": "#ffffff",
   "theme_color": "#1d4ed8",
   "description": "View the addresses under a postal code on a map, for the Netherlands.",
+  "orientation": "natural",
+  "screenshot": [
+    "screenshots/Screenshot_20251007-145205.png",
+    "screenshots/Screenshot_20251007-145214.png",
+    "screenshots/Screenshot_20251007-145428.png"
+  ],
   "icons": [
     {
       "src": "icons/icon_512x512.png",
