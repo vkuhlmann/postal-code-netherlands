@@ -13,13 +13,16 @@ export default defineConfig({
       manifest: {
         name: 'Postal Code Netherlands',
         short_name: 'NL Postcode',
-        start_url: '/',
+        // Use relative URLs so deployment under a subpath works (e.g., GitHub Pages /<repo>/)
+        start_url: '.',
+        scope: '.',
         display: 'standalone',
         background_color: '#ffffff',
         theme_color: '#1d4ed8',
         icons: [
           {
-            src: '/favicon.ico',
+            // Relative icon path works with any base path
+            src: 'favicon.ico',
             sizes: '48x48 64x64 96x96 128x128 256x256',
             type: 'image/x-icon'
           }

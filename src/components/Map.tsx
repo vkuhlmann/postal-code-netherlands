@@ -89,10 +89,12 @@ const Map = ({ locations, onLocationSelect, onMove, onMapInit, className, style 
   };
 
   const currentGroupingDistance = getGroupingDistance(zoom);
+  // Use Vite base URL so assets resolve under subpath deployments (e.g., GitHub Pages /<repo>/)
+  const BASE_URL = import.meta.env.BASE_URL || '/';
   const customIcon = new L.Icon({
-      iconUrl: "/leaflet/marker-icon.png",
-      iconRetinaUrl: "/leaflet/marker-icon-2x.png",
-      shadowUrl: "/leaflet/marker-shadow.png",
+      iconUrl: `${BASE_URL}leaflet/marker-icon.png`,
+      iconRetinaUrl: `${BASE_URL}leaflet/marker-icon-2x.png`,
+      shadowUrl: `${BASE_URL}leaflet/marker-shadow.png`,
       iconSize: [25, 41],
       iconAnchor: [12, 41],
       popupAnchor: [1, -34],
