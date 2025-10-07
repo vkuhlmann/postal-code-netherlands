@@ -9,15 +9,16 @@ import {
   validateAddress, ValidationResult, FormattedAddress, PointOfInterest,
 } from '@/app/postal_code';
 import { euclideanDistance } from '@/utils/locations';
-import {setMapViewToLocations} from '@/utils/map_view';
+import { setMapViewToLocations } from '@/utils/map_view';
 import { findCachedPostalCodesByCoordinates, loadCoordinateCacheFromPdokCache } from '@/utils/coordinate_cache';
 
+type SelectionFeatures = 'postal_code' | 'street' | 'house_number';
 
 export default function Home() {
   const [postalCode, setPostalCode] = useState('');
   const [streetName, setStreetName] = useState('');
   const [houseNumber, setHouseNumber] = useState('');
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const [postalCodeInfo, setPostalCodeInfo] = useState<PostalCodeInfo | null>(null);
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
@@ -30,6 +31,20 @@ export default function Home() {
   const inputAnchorRef = useRef<HTMLDivElement | null>(null);
   const [dropdownLeft, setDropdownLeft] = useState(0);
   const [dropdownWidth, setDropdownWidth] = useState(220);
+  const [selectionFeature, setSelectionFeature] = useState<SelectionFeatures>('postal_code');
+
+  const availableSelectionFeatures: SelectionFeatures[] =
+    postalCode ? (
+      streetName ? ['house_number'] :
+        ['street']) : ['postal_code'];
+
+  useEffect(() => {
+    console.log('Available selection features:', availableSelectionFeatures);
+    if (!availableSelectionFeatures.includes(selectionFeature)) {
+      setSelectionFeature(availableSelectionFeatures[0]);
+    }
+  }, [availableSelectionFeatures.join(','), selectionFeature]);
+
 
   // Debounce timer for map movement
   const mapMoveTimer = useRef<NodeJS.Timeout | null>(null);
@@ -209,19 +224,38 @@ export default function Home() {
   }, [sanitizedPostalCode]);
 
   const nextSearchPlaceholder = useMemo(() => {
-    if (!postalCodeInfo) return 'Enter postal code first';
-    return streetName ? 'Search house number…' : 'Search street…';
-  }, [postalCodeInfo, streetName]);
+    switch (selectionFeature) {
+      case 'postal_code':
+        return 'Search postal code…';
+      case 'street':
+        return 'Search street…';
+      case 'house_number':
+        return 'Search house number…';
+    }
+  }, [selectionFeature]);
 
   const availableOptions: string[] = useMemo(() => {
-    if (!postalCodeInfo) return [];
-    if (!streetName) return postalCodeInfo.straatnamen;
-    // When street is selected, show house numbers for that street
-    const numbers = postalCodeInfo.adressen
-      .filter((a) => a.straatnaam === streetName)
-      .map((a) => a.nummer);
-    return Array.from(new Set(numbers));
-  }, [postalCodeInfo, streetName]);
+    if (selectionFeature === 'postal_code') {
+      // Use visible postal codes from the map as suggestions
+      const codes = locations
+        .filter((l): l is any => (l as any).type === 'postcode')
+        .map((l: any) => String(l.label || l.details?.postcode || ''))
+        .filter(Boolean)
+        .map((s: string) => s.replace(/\s/g, '').toUpperCase());
+      return Array.from(new Set(codes)).sort();
+    }
+    if (selectionFeature === 'street') {
+      return postalCodeInfo?.straatnamen ?? [];
+    }
+    if (selectionFeature === 'house_number') {
+      if (!postalCodeInfo || !streetName) return [];
+      const numbers = postalCodeInfo.adressen
+        .filter((a) => a.straatnaam === streetName)
+        .map((a) => a.nummer);
+      return Array.from(new Set(numbers));
+    }
+    return [];
+  }, [selectionFeature, locations, postalCodeInfo, streetName]);
 
   const filteredOptions = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -229,20 +263,88 @@ export default function Home() {
     return availableOptions.filter((opt) => opt.toLowerCase().includes(q));
   }, [availableOptions, searchQuery]);
 
-  const handleOptionSelect = useCallback((opt: string) => {
-    if (!postalCodeInfo) return;
-    if (!streetName) {
-      setStreetName(opt);
+  const commitSearch = useCallback(() => {
+    if (selectionFeature === 'postal_code') {
+      let s = searchQuery.replace(/\s/g, '').toUpperCase();
+      const valid = /^\d{4}[A-Z]{2}$/.test(s);
+      if (!valid) {
+        if (filteredOptions.length === 0) return;
+        s = String(filteredOptions[0]).replace(/\s/g, '').toUpperCase();
+      }
+      setPostalCode(s);
       setSearchQuery('');
-      // Keep picker open to allow immediate house number selection if available
+      setPickerOpen(false);
+      return;
+    }
+
+    if (selectionFeature === 'street') {
+      let s = searchQuery.trim();
+      if (!s) {
+        if (filteredOptions.length === 0) return;
+        s = filteredOptions[0];
+      }
+      setStreetName(s);
+      setSearchQuery('');
+      setPickerOpen(false);
+      return;
+    }
+
+    if (selectionFeature === 'house_number') {
+      let s = searchQuery.trim();
+      if (!s) {
+        if (filteredOptions.length === 0) return;
+        s = filteredOptions[0];
+      }
+      setHouseNumber(s);
+      setSearchQuery('');
+      setPickerOpen(false);
+      return;
+    }
+  }, [selectionFeature, searchQuery, filteredOptions]);
+
+  const handleOptionSelect = useCallback((opt: string) => {
+    if (selectionFeature === 'postal_code') {
+      const s = String(opt).replace(/\s/g, '').toUpperCase();
+      setPostalCode(s);
+      setSearchQuery('');
       setPickerOpen(true);
       requestAnimationFrame(() => updateDropdownPosition());
-    } else {
+      return;
+    }
+
+    if (selectionFeature === 'street') {
+      setStreetName(opt);
+      setSearchQuery('');
+      setPickerOpen(true);
+      requestAnimationFrame(() => updateDropdownPosition());
+      return;
+    }
+
+    if (selectionFeature === 'house_number') {
       setHouseNumber(opt);
       setSearchQuery('');
       setPickerOpen(false);
+      return;
     }
-  }, [postalCodeInfo, streetName]);
+  }, [selectionFeature]);
+
+  // If typing a full postal code in the tray and feature is postal_code, apply it automatically
+  useEffect(() => {
+    if (selectionFeature !== 'postal_code') return;
+    const s = searchQuery.replace(/\s/g, '').toUpperCase();
+    const valid = /^\d{4}[A-Z]{2}$/.test(s);
+    if (valid) {
+      setPostalCode(s);
+      setSearchQuery('');
+      setPickerOpen(true);
+      requestAnimationFrame(() => updateDropdownPosition());
+    }
+  }, [searchQuery, selectionFeature]);
+
+  // Clear query when switching feature to avoid confusing filters
+  useEffect(() => {
+    setSearchQuery('');
+  }, [selectionFeature]);
 
   const updateDropdownPosition = useCallback(() => {
     const wrapper = trayRef.current;
@@ -302,9 +404,8 @@ export default function Home() {
 
       {/* Collapsible side panel */}
       <section
-        className={`fixed z-20 top-0 bottom-0 left-0 w-[min(92vw,420px)] max-w-full bg-white/95 dark:bg-black/80 backdrop-blur border-r border-black/10 dark:border-white/10 shadow-xl transition-transform duration-300 ease-in-out ${
-          panelOpen ? 'translate-x-0' : '-translate-x-[calc(100%_-_3.5rem)] md:-translate-x-full'
-        }`}
+        className={`fixed z-20 top-0 bottom-0 left-0 w-[min(92vw,420px)] max-w-full bg-white/95 dark:bg-black/80 backdrop-blur border-r border-black/10 dark:border-white/10 shadow-xl transition-transform duration-300 ease-in-out ${panelOpen ? 'translate-x-0' : '-translate-x-[calc(100%_-_3.5rem)] md:-translate-x-full'
+          }`}
         style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Drag/peek handle for mobile when closed */}
@@ -384,9 +485,8 @@ export default function Home() {
 
       {/* Floating breadcrumb tray at bottom */}
       <div className="fixed z-20 bottom-0 left-0 right-0 flex justify-center px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pointer-events-none">
-        {(postalChipLabel || streetName || houseNumber) && (
-          <div className="relative pointer-events-auto" ref={trayRef}>
-            <div className="max-w-[min(92vw,900px)] w-fit flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/70 backdrop-blur shadow-lg px-2 py-1 overflow-x-auto">
+        <div className="relative pointer-events-auto" ref={trayRef}>
+          <div className="max-w-[min(92vw,900px)] w-fit flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/70 backdrop-blur shadow-lg px-2 py-1 overflow-x-auto">
             {postalChipLabel && (
               <button
                 type="button"
@@ -399,7 +499,7 @@ export default function Home() {
               </button>
             )}
 
-              {postalChipLabel && streetName && (
+            {postalChipLabel && streetName && (
               <span className="shrink-0 text-sm text-gray-300">&gt;</span>
             )}
 
@@ -415,63 +515,73 @@ export default function Home() {
               </button>
             )}
 
-              {streetName && houseNumber && (
-                <span className="shrink-0 text-sm text-gray-300">&gt;</span>
-              )}
-
-              {houseNumber && (
-                <button
-                  type="button"
-                  aria-label="Clear house number"
-                  onClick={() => setHouseNumber('')}
-                  className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-amber-200/60 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-3 py-1 text-sm hover:bg-amber-100 dark:hover:bg-amber-900/50 transition"
-                >
-                  <span className="font-medium">{houseNumber}</span>
-                  <span aria-hidden className="text-base leading-none">×</span>
-                </button>
-              )}
-
-
-            {/* Next component search input */}
-            {postalCodeInfo && (
-              <>
-                {(postalChipLabel || streetName) && (
-                  <span className="shrink-0 text-sm text-gray-300 dark:text-gray-300">|</span>
-                )}
-                <div className="relative inline-block" ref={inputAnchorRef}>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onFocus={() => { setPickerOpen(true); requestAnimationFrame(() => updateDropdownPosition()); }}
-                    onChange={(e) => { setSearchQuery(e.target.value); setPickerOpen(true); requestAnimationFrame(() => updateDropdownPosition()); }}
-                    placeholder={nextSearchPlaceholder}
-                    className="w-[min(60vw,220px)] md:w-64 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-zinc-900/70 px-3 py-1 text-sm text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </>
+            {streetName && houseNumber && (
+              <span className="shrink-0 text-sm text-gray-300">&gt;</span>
             )}
-            </div>
 
-            {postalCodeInfo && isPickerOpen && filteredOptions.length > 0 && (
-              <ul
-                className="absolute bottom-[calc(100%+0.5rem)] z-30 max-h-64 overflow-auto rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 text-black dark:text-white shadow-xl"
-                style={{ left: dropdownLeft, width: dropdownWidth }}
+            {houseNumber && (
+              <button
+                type="button"
+                aria-label="Clear house number"
+                onClick={() => setHouseNumber('')}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-amber-200/60 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-3 py-1 text-sm hover:bg-amber-100 dark:hover:bg-amber-900/50 transition"
               >
-                {filteredOptions.map((opt) => (
+                <span className="font-medium">{houseNumber}</span>
+                <span aria-hidden className="text-base leading-none">×</span>
+              </button>
+            )}
+
+            {/* Next component search input (always available) */}
+            <>
+              {(postalChipLabel || streetName) && (
+                <span className="shrink-0 text-sm text-gray-300 dark:text-gray-300">|</span>
+              )}
+              <div className="relative inline-block" ref={inputAnchorRef}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onFocus={() => { setPickerOpen(true); requestAnimationFrame(() => updateDropdownPosition()); }}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPickerOpen(true); requestAnimationFrame(() => updateDropdownPosition()); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitSearch();
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setPickerOpen(false);
+                    }
+                  }}
+                  placeholder={nextSearchPlaceholder}
+                  className="w-[min(60vw,220px)] md:w-64 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-zinc-900/70 px-3 py-1 text-sm text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </>
+          </div>
+
+          {isPickerOpen && filteredOptions.length > 0 && (
+            <ul
+              className="absolute bottom-[calc(100%+0.5rem)] z-30 max-h-64 overflow-auto rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 text-black dark:text-white shadow-xl"
+              style={{ left: dropdownLeft, width: dropdownWidth }}
+            >
+              {filteredOptions.map((opt) => {
+                const display = selectionFeature === 'postal_code'
+                  ? (() => { const s = String(opt).replace(/\s/g, '').toUpperCase(); return s.length >= 5 ? `${s.slice(0, 4)} ${s.slice(4, 6)}` : s; })()
+                  : opt;
+                return (
                   <li key={opt}>
                     <button
                       type="button"
                       onClick={() => handleOptionSelect(opt)}
                       className="w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-zinc-800"
                     >
-                      {opt}
+                      {display}
                     </button>
                   </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
       </div>
     </main>
