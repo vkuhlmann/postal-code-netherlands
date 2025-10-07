@@ -23,6 +23,13 @@ export default function Home() {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [locations, setLocations] = useState<(PointOfInterest | FormattedAddress)[]>([]);
   const [mapCenter, setMapCenter] = useState<[number, number] | null>(null);
+  // Bottom tray search state
+  const [isPickerOpen, setPickerOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const trayRef = useRef<HTMLDivElement | null>(null);
+  const inputAnchorRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownLeft, setDropdownLeft] = useState(0);
+  const [dropdownWidth, setDropdownWidth] = useState(220);
 
   // Debounce timer for map movement
   const mapMoveTimer = useRef<NodeJS.Timeout | null>(null);
@@ -193,6 +200,80 @@ export default function Home() {
     return status ? 'border-green-500' : 'border-red-500';
   };
 
+  // Display helpers for breadcrumb tray
+  const postalChipLabel = useMemo(() => {
+    if (!sanitizedPostalCode) return '';
+    const s = sanitizedPostalCode.toUpperCase();
+    if (s.length >= 5) return `${s.slice(0, 4)} ${s.slice(4, 6)}`;
+    return s;
+  }, [sanitizedPostalCode]);
+
+  const nextSearchPlaceholder = useMemo(() => {
+    if (!postalCodeInfo) return 'Enter postal code first';
+    return streetName ? 'Search house number…' : 'Search street…';
+  }, [postalCodeInfo, streetName]);
+
+  const availableOptions: string[] = useMemo(() => {
+    if (!postalCodeInfo) return [];
+    if (!streetName) return postalCodeInfo.straatnamen;
+    // When street is selected, show house numbers for that street
+    const numbers = postalCodeInfo.adressen
+      .filter((a) => a.straatnaam === streetName)
+      .map((a) => a.nummer);
+    return Array.from(new Set(numbers));
+  }, [postalCodeInfo, streetName]);
+
+  const filteredOptions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return availableOptions;
+    return availableOptions.filter((opt) => opt.toLowerCase().includes(q));
+  }, [availableOptions, searchQuery]);
+
+  const handleOptionSelect = useCallback((opt: string) => {
+    if (!postalCodeInfo) return;
+    if (!streetName) {
+      setStreetName(opt);
+      setSearchQuery('');
+      // Keep picker open to allow immediate house number selection if available
+      setPickerOpen(true);
+      requestAnimationFrame(() => updateDropdownPosition());
+    } else {
+      setHouseNumber(opt);
+      setSearchQuery('');
+      setPickerOpen(false);
+    }
+  }, [postalCodeInfo, streetName]);
+
+  const updateDropdownPosition = useCallback(() => {
+    const wrapper = trayRef.current;
+    const anchor = inputAnchorRef.current;
+    if (!wrapper || !anchor) return;
+    const wRect = wrapper.getBoundingClientRect();
+    const aRect = anchor.getBoundingClientRect();
+    setDropdownLeft(aRect.left - wRect.left);
+    setDropdownWidth(aRect.width);
+  }, []);
+
+  useEffect(() => {
+    if (!isPickerOpen) return;
+    updateDropdownPosition();
+    const onResize = () => updateDropdownPosition();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [isPickerOpen, updateDropdownPosition]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!trayRef.current) return;
+      if (!trayRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
+
   return (
     <main className="relative h-[100svh] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       {/* Map fills the screen */}
@@ -300,6 +381,99 @@ export default function Home() {
           </form>
         </div>
       </section>
+
+      {/* Floating breadcrumb tray at bottom */}
+      <div className="fixed z-20 bottom-0 left-0 right-0 flex justify-center px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pointer-events-none">
+        {(postalChipLabel || streetName || houseNumber) && (
+          <div className="relative pointer-events-auto" ref={trayRef}>
+            <div className="max-w-[min(92vw,900px)] w-fit flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/70 backdrop-blur shadow-lg px-2 py-1 overflow-x-auto">
+            {postalChipLabel && (
+              <button
+                type="button"
+                aria-label="Clear postal code"
+                onClick={() => setPostalCode('')}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-blue-200/60 dark:border-blue-800 bg-blue-50/90 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-3 py-1 text-sm hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
+              >
+                <span className="font-medium tracking-wide">{postalChipLabel}</span>
+                <span aria-hidden className="text-base leading-none">×</span>
+              </button>
+            )}
+
+              {postalChipLabel && streetName && (
+              <span className="shrink-0 text-sm text-gray-300">&gt;</span>
+            )}
+
+            {streetName && (
+              <button
+                type="button"
+                aria-label="Clear street name"
+                onClick={() => setStreetName('')}
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-emerald-200/60 dark:border-emerald-800 bg-emerald-50/90 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-3 py-1 text-sm hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition"
+              >
+                <span className="font-medium">{streetName}</span>
+                <span aria-hidden className="text-base leading-none">×</span>
+              </button>
+            )}
+
+              {streetName && houseNumber && (
+                <span className="shrink-0 text-sm text-gray-300">&gt;</span>
+              )}
+
+              {houseNumber && (
+                <button
+                  type="button"
+                  aria-label="Clear house number"
+                  onClick={() => setHouseNumber('')}
+                  className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-amber-200/60 dark:border-amber-800 bg-amber-50/90 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 px-3 py-1 text-sm hover:bg-amber-100 dark:hover:bg-amber-900/50 transition"
+                >
+                  <span className="font-medium">{houseNumber}</span>
+                  <span aria-hidden className="text-base leading-none">×</span>
+                </button>
+              )}
+
+
+            {/* Next component search input */}
+            {postalCodeInfo && (
+              <>
+                {(postalChipLabel || streetName) && (
+                  <span className="shrink-0 text-sm text-gray-300 dark:text-gray-300">|</span>
+                )}
+                <div className="relative inline-block" ref={inputAnchorRef}>
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onFocus={() => { setPickerOpen(true); requestAnimationFrame(() => updateDropdownPosition()); }}
+                    onChange={(e) => { setSearchQuery(e.target.value); setPickerOpen(true); requestAnimationFrame(() => updateDropdownPosition()); }}
+                    placeholder={nextSearchPlaceholder}
+                    className="w-[min(60vw,220px)] md:w-64 rounded-full border border-black/10 dark:border-white/10 bg-white/70 dark:bg-zinc-900/70 px-3 py-1 text-sm text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </>
+            )}
+            </div>
+
+            {postalCodeInfo && isPickerOpen && filteredOptions.length > 0 && (
+              <ul
+                className="absolute bottom-[calc(100%+0.5rem)] z-30 max-h-64 overflow-auto rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 text-black dark:text-white shadow-xl"
+                style={{ left: dropdownLeft, width: dropdownWidth }}
+              >
+                {filteredOptions.map((opt) => (
+                  <li key={opt}>
+                    <button
+                      type="button"
+                      onClick={() => handleOptionSelect(opt)}
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 dark:hover:bg-zinc-800"
+                    >
+                      {opt}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+      </div>
     </main>
   );
 }
