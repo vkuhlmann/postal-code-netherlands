@@ -32,6 +32,8 @@ export default function Home() {
   const [dropdownLeft, setDropdownLeft] = useState(0);
   const [dropdownWidth, setDropdownWidth] = useState(220);
   const [selectionFeature, setSelectionFeature] = useState<SelectionFeatures>('postal_code');
+  // Keyboard inset (in px). Managed via VisualViewport when available.
+  const [kbBottom, setKbBottom] = useState(0);
 
   const availableSelectionFeatures: SelectionFeatures[] =
     postalCode ? (
@@ -44,6 +46,29 @@ export default function Home() {
       setSelectionFeature(availableSelectionFeatures[0]);
     }
   }, [availableSelectionFeatures.join(','), selectionFeature]);
+
+  // Keep a CSS variable --kb-bottom in sync with the on-screen keyboard height
+  // so fixed-bottom UI can sit above the keyboard on mobile browsers.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('visualViewport' in window)) return;
+    const vv = window.visualViewport as VisualViewport;
+    const updateKb = () => {
+      // Estimate keyboard overlap relative to the layout viewport bottom.
+      // See https://developer.mozilla.org/en-US/docs/Web/API/Visual_Viewport_API
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbBottom(overlap);
+      document.documentElement.style.setProperty('--kb-bottom', `${overlap}px`);
+    };
+    updateKb();
+    vv.addEventListener('resize', updateKb);
+    vv.addEventListener('scroll', updateKb);
+    window.addEventListener('resize', updateKb);
+    return () => {
+      vv.removeEventListener('resize', updateKb);
+      vv.removeEventListener('scroll', updateKb);
+      window.removeEventListener('resize', updateKb);
+    };
+  }, []);
 
 
   // Debounce timer for map movement
@@ -377,7 +402,7 @@ export default function Home() {
   }, []);
 
   return (
-    <main className="relative h-[100svh] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+    <main className="relative h-[100dvh] min-h-[100svh] w-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       {/* Map fills the screen */}
       <div className="absolute inset-0 z-10">
         <Map
@@ -390,28 +415,37 @@ export default function Home() {
       </div>
 
       {/* Floating action button to toggle panel */}
-      <button
+      {/* <button
         aria-label={panelOpen ? 'Hide search panel' : 'Show search panel'}
         onClick={() => setPanelOpen(!panelOpen)}
-        className="fixed z-30 bottom-[max(1rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg grid place-items-center hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        className="fixed z-30 right-[max(1rem,env(safe-area-inset-right))] h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg grid place-items-center hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        style={{
+          // Lift above the keyboard while preserving a margin and safe-area inset
+          bottom: `calc(var(--kb-bottom, 0px) + max(1rem, env(safe-area-inset-bottom)))`,
+        }}
       >
         {panelOpen ? (
           <span className="text-xl">×</span>
         ) : (
           <span className="text-xl">⌕</span>
         )}
-      </button>
+      </button> */}
 
       {/* Collapsible side panel */}
       <section
-        className={`fixed z-20 top-0 bottom-0 left-0 w-[min(92vw,420px)] max-w-full bg-white/95 dark:bg-black/80 backdrop-blur border-r border-black/10 dark:border-white/10 shadow-xl transition-transform duration-300 ease-in-out ${panelOpen ? 'translate-x-0' : '-translate-x-[calc(100%_-_3.5rem)] md:-translate-x-full'
+        className={`fixed z-20 top-0 bottom-0 left-0 w-[min(92vw,420px)] max-w-full bg-white/95 dark:bg-black/80 backdrop-blur border-r border-black/10 dark:border-white/10 shadow-xl transition-transform duration-300 ease-in-out ${panelOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
-        style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{
+          paddingTop: 'env(safe-area-inset-top)',
+          // Add keyboard inset so bottom of the panel content remains reachable
+          paddingBottom: 'calc(env(safe-area-inset-bottom) + var(--kb-bottom, 0px))',
+        }}
       >
         {/* Drag/peek handle for mobile when closed */}
         <div className="absolute -right-4 top-16 hidden md:block">
           {/* spacer for desktop only */}
         </div>
+        
         <div className="h-full overflow-y-auto px-4 sm:px-6">
           <header className="sticky top-0 py-3 mb-2 pr-10">
             <h1 className="text-lg font-semibold">Find address</h1>
@@ -484,7 +518,13 @@ export default function Home() {
       </section>
 
       {/* Floating breadcrumb tray at bottom */}
-      <div className="fixed z-20 bottom-0 left-0 right-0 flex justify-center px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pointer-events-none">
+      <div
+        className="fixed z-20 left-0 right-0 flex justify-center px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pointer-events-none"
+        style={{
+          // Position the tray just above the keyboard when it is visible
+          bottom: 'var(--kb-bottom, 0px)'
+        }}
+      >
         <div className="relative pointer-events-auto" ref={trayRef}>
           <div className="max-w-[min(92vw,900px)] w-fit flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white/90 dark:bg-black/70 backdrop-blur shadow-lg px-2 py-1 overflow-x-auto">
             {postalChipLabel && (
